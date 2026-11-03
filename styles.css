@@ -133,3 +133,10 @@ tr.is-round td{color:var(--loden)}
 .fibel-text p{margin:0;max-width:65ch}
 .danger-box{border:1px solid var(--red);background:var(--red-soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
 .danger-box p{margin:0}
+.sync-row{display:flex;flex-direction:column;gap:4px;padding:8px 0;border-top:1px solid var(--line)}
+label.check.sync-row{flex-direction:row;align-items:flex-start;gap:8px;font-size:14px;color:var(--ink)}
+.sync-row label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.sync-row input,.sync-row label.check input{width:18px;height:18px;flex:none;margin-top:2px;accent-color:var(--loden)}
+.sync-row s{color:var(--muted)}
+.sync-list{margin:0;padding-left:18px;columns:2;font-size:14px}
+label.btn{cursor:pointer}

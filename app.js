@@ -85,7 +85,7 @@ async function login(email, code) {
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const [mem, ev, rs, at, nl, bd, fb] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday)").order("last_name").order("first_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present"),
@@ -461,7 +461,7 @@ function renderEdit() {
     ${field("e-email", "E-Mail (für die Anmeldung)", p.email, "email", 'autocomplete="off"')}
     <div class="grid2">${field("e-phone", "Telefon", p.phone, "tel")}${field("e-rifle", "Gewehrnummer", p.rifle_number)}</div>
     ${field("e-address", "Adresse", p.address)}
-    ${field("e-birthday", "Geburtstag", p.birthday, "date")}
+    <div class="grid2">${field("e-birthday", "Geburtstag", p.birthday, "date")}${field("e-joined", "Beitritt", p.joined_on, "date")}</div>
     <div class="checks">
       ${check("e-post", "Rundschreiben per Post", p.needs_post)}
       ${check("e-active", "Aktiv (kann sich anmelden)", m.active)}
@@ -487,7 +487,7 @@ async function saveMember() {
   };
   const privRow = {
     email, phone: val("#e-phone"), rifle_number: val("#e-rifle"), address: val("#e-address"),
-    birthday: val("#e-birthday"), needs_post: $("#e-post").checked
+    birthday: val("#e-birthday"), joined_on: val("#e-joined"), needs_post: $("#e-post").checked
   };
   const old = isNew ? null : state.allMembers.find(x => x.id === state.edit);
   const oldEmail = old ? priv(old).email : null;
@@ -518,8 +518,9 @@ function saveFailed(error) {
   toast(error.code === "23505" ? "Diese E-Mail-Adresse ist schon bei einem anderen Mitglied eingetragen." : "Speichern hat nicht geklappt. Bitte prüfe die Eingaben.");
 }
 function renderPhone() {
+  if (state.syncOpen) return renderSync();
   if (state.edit) return renderEdit();
-  return `<div class="row-actions" style="margin-bottom:10px"><button class="btn" id="member-new">Neues Mitglied</button></div>
+  return `<div class="row-actions" style="margin-bottom:10px"><button class="btn" id="member-new">Neues Mitglied</button><button class="btn" id="sync-open">Abgleich mit BTSK-Export</button></div>
   <input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
   <div class="panel" id="phone-list">${phoneRows(phoneList())}</div>`;
 }
@@ -581,7 +582,7 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; render(); return; }
+  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; state.syncOpen = false; state.sync = null; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }

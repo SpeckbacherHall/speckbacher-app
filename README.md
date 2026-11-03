@@ -50,6 +50,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
 
+**Abgleich mit dem Dachverband (BTSK):** Im BTSK-Portal die Mitgliederliste als CSV exportieren, dann Admin → Mitglieder → „Abgleich mit BTSK-Export“ und Datei wählen. Die App zeigt neue Mitglieder, geänderte Angaben (E-Mail, Telefon, Adresse, Geburtstag, Beitritt, Rang, Funktion, Anrede, Postversand, Aktiv) und wer nur in der App steht. Übernommen wird nur Angehaktes; Gewehrnummern, Vorstand, Admin und App-Zugänge bleiben unberührt. Ein automatischer Abruf aus dem Portal ist nicht möglich (keine Schnittstelle, automatische Zugriffe gesperrt).
+
 **Mitglied löschen:** In der Mitgliederbearbeitung „Mitglied löschen“ und die Rückfrage bestätigen. Entfernt auch den App-Zugang sowie alle Rückmeldungen und Anwesenheiten. Für Ausgetretene ist „Aktiv“ abhaken meist besser, dann bleibt die Geschichte erhalten.
 
 **Admin, Vorstand oder Sperre:** In der Mitgliederbearbeitung „Admin“, „Vorstand“ bzw. „Aktiv“ an- oder abhaken.
