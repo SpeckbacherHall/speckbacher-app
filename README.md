@@ -11,6 +11,8 @@ Pilotversion, Stand November 2026.
 | Web-App | dieses Repository, veröffentlicht über GitHub Pages | Oberfläche (`index.html`, `app.js`, `styles.css`), Logo `logo.svg`, Schrift Karla in `fonts/` |
 | Datenbank, Login | Supabase-Projekt `speckbacher-app` (Region Frankfurt) | Mitglieder, Termine, Rückmeldungen, Anmeldung mit E-Mail und Zugangscode |
 | Zugangscodes | `supabase/functions/zugang` (Supabase Edge Function) | Admin erzeugt pro Mitglied einen Code |
+| Kalender-Abo | `supabase/functions/kalender` | Persönlicher Abo-Link mit allen zugesagten Terminen |
+| Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
 
 Es gibt keinen Build-Schritt: Die Dateien im Repository sind genau das, was online läuft.
@@ -35,6 +37,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 **Termin ändern:** Admin → Rückmeldungen → Termin öffnen → „Bearbeiten“.
 
 **Anwesenheit erfassen:** Termin öffnen → „Anwesenheit“ (am Termintag und danach öffnet sich diese Ansicht automatisch). „Alle Zugesagten als ‚da‘“ setzen, dann einzelne Personen korrigieren und zum Schluss „Übrige als ‚nicht da‘“. Vergangene Termine der letzten zwölf Monate findest du unter Rückmeldungen → „Vergangene“. Der CSV-Export enthält die Anwesenheit.
+
+**Erinnerungen und Kalender (Mitglieder):** Oben bei den Ausrückungen „Erinnerungen & Kalender“. Am iPhone funktionieren Erinnerungen nur, wenn die App über „Zum Home-Bildschirm“ installiert ist. Die Push-Schlüssel und das Kennwort des Zeitplans liegen im Supabase Vault (`vapid_public`, `vapid_private`, `cron_secret`).
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
 

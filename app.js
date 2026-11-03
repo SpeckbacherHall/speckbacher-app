@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -85,7 +85,7 @@ async function login(email, code) {
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const [mem, ev, rs, at] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,member_private(phone,rifle_number,email,needs_post,address,birthday)").order("last_name").order("first_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present")
@@ -105,7 +105,9 @@ function renderMember() {
   if (state.filter === "offen") list = list.filter(e => !myResp(e.id));
   if (state.filter === "zu") list = list.filter(e => myResp(e.id) === "yes");
   const open = upcoming().filter(e => !myResp(e.id)).length;
-  let html = `<p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
+  if (state.settings) return renderSettings();
+  let html = `<div class="settings-link"><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
     ${[["alle", "Alle"], ["offen", "Offen"], ["zu", "Zugesagt"]].map(([k, l]) => `<button class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
   </div>`;
@@ -132,6 +134,76 @@ function renderMember() {
   }
   return html + `</div>`;
 }
+/* ---------- Erinnerungen & Kalender ---------- */
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function b64ToBytes(b64) {
+  const s = atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+async function refreshPushState() {
+  if (!pushSupported()) { state.pushState = isIOS && !isStandalone ? "ios-browser" : "nicht-unterstuetzt"; return; }
+  if (Notification.permission === "denied") { state.pushState = "blockiert"; return; }
+  const reg = await navigator.serviceWorker.ready;
+  state.pushState = (await reg.pushManager.getSubscription()) ? "aktiv" : "aus";
+}
+async function enablePush() {
+  try {
+    if (await Notification.requestPermission() !== "granted") { await refreshPushState(); render(); return toast("Mitteilungen wurden nicht erlaubt."); }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(cfg.vapidPublicKey) });
+    const j = sub.toJSON();
+    const { error } = await db.from("push_subscriptions").upsert(
+      { member_id: state.me.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_agent: navigator.userAgent.slice(0, 200) },
+      { onConflict: "endpoint" });
+    if (error) throw error;
+    state.pushState = "aktiv"; render(); toast("Erinnerungen sind auf diesem Gerät aktiv.");
+  } catch (e) { console.error(e); toast("Erinnerungen konnten nicht aktiviert werden."); }
+}
+async function disablePush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) { await db.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+  state.pushState = "aus"; render(); toast("Erinnerungen auf diesem Gerät ausgeschaltet.");
+}
+async function testPush() {
+  const { data, error } = await db.functions.invoke("erinnerung", { body: { mode: "test" } });
+  if (error || !data?.sent) return toast("Die Test-Nachricht konnte nicht zugestellt werden.");
+  toast("Test-Nachricht verschickt.");
+}
+function calendarUrl() {
+  const token = priv(state.me).calendar_token;
+  return token ? `${cfg.supabaseUrl}/functions/v1/kalender?t=${token}` : null;
+}
+function renderSettings() {
+  const url = calendarUrl();
+  const push = {
+    "aktiv": `<p><span class="status yes">Aktiv auf diesem Gerät</span></p>
+      <div class="row-actions"><button class="btn" id="push-test">Test-Nachricht schicken</button><button class="btn ghost" id="push-off">Ausschalten</button></div>`,
+    "aus": `<p class="fn">Du bekommst am Vortag um 18 Uhr eine Erinnerung für jeden Termin, für den du zugesagt hast.</p>
+      <div class="row-actions"><button class="btn yes" id="push-on">Erinnerungen einschalten</button></div>`,
+    "blockiert": `<p class="fn">Mitteilungen sind für diese Seite blockiert. Erlaube sie in den Einstellungen deines Browsers bzw. Handys und lade die Seite neu.</p>`,
+    "ios-browser": `<p class="fn">Am iPhone funktionieren Erinnerungen nur, wenn die App auf dem Home-Bildschirm liegt: In Safari auf das Teilen-Symbol tippen, „Zum Home-Bildschirm“ wählen und die App von dort öffnen.</p>`,
+    "nicht-unterstuetzt": `<p class="fn">Dieser Browser unterstützt keine Erinnerungen. Versuche es mit Chrome (Android) oder Safari vom Home-Bildschirm (iPhone).</p>`,
+    "unbekannt": `<p class="fn">Wird geprüft …</p>`
+  }[state.pushState];
+  return `<button class="back" id="close-settings">‹ Zu den Ausrückungen</button>
+  <div class="panel">
+    <h2>Erinnerungen</h2>
+    ${push}
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <h2>Kalender-Abo</h2>
+    <p class="fn">Alle Termine, für die du zusagst, erscheinen automatisch in deinem Handykalender und bleiben aktuell. Ziehst du eine Zusage zurück, verschwindet der Termin wieder.</p>
+    ${url ? `<div class="row-actions">
+      <a class="btn yes" href="${esc(url.replace(/^https:/, "webcal:"))}">Kalender abonnieren</a>
+      <button class="btn" id="copy-cal">Link kopieren</button></div>
+      <p class="rule">iPhone: „Kalender abonnieren“ antippen und bestätigen. Android/Google: Link kopieren und im Google Kalender am Computer unter „Weitere Kalender“ → „Per URL“ einfügen. Den Link nicht weitergeben, er ist persönlich.</p>
+      <pre class="msg" id="cal-url">${esc(url)}</pre>` : `<p class="fn">Der Link ist noch nicht verfügbar.</p>`}
+  </div>`;
+}
+
 async function setResp(eventId, status) {
   const q = status
     ? db.from("responses").upsert({ event_id: eventId, member_id: state.me.id, status })
@@ -477,7 +549,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
@@ -516,6 +588,16 @@ document.addEventListener("click", async ev => {
     const rest = relevantMembers(e).filter(m => presentOf(e, m.id) === undefined).map(m => m.id);
     if (!rest.length) return toast("Alle sind bereits erfasst.");
     return setAttendance(e, rest, false);
+  }
+  if (t.id === "open-settings") { state.settings = true; render(); scrollTo(0, 0); refreshPushState().then(render); return; }
+  if (t.id === "close-settings") { state.settings = false; render(); return; }
+  if (t.id === "push-on") { t.disabled = true; return enablePush(); }
+  if (t.id === "push-off") { t.disabled = true; return disablePush(); }
+  if (t.id === "push-test") { t.disabled = true; await testPush(); t.disabled = false; return; }
+  if (t.id === "copy-cal") {
+    try { await navigator.clipboard.writeText(calendarUrl()); toast("Link kopiert."); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($("#cal-url")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Link markiert – jetzt kopieren."); }
+    return;
   }
   if (t.id === "export") { exportCsv(state.events.find(x => x.id === state.openEvent)); return; }
   if (t.id === "delete") { state.confirmDelete = true; render(); return; }
@@ -586,3 +668,5 @@ async function boot() {
 }
 db.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && !state.me) start(); });
 start();
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.error("Service Worker", e));
