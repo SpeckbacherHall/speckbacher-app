@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", newsletters: [], letterId: null, nlEdit: false, nlDraft: null, settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", birthdays: [], showBirthdays: false, newsletters: [], letterId: null, nlEdit: false, nlDraft: null, settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -84,16 +84,18 @@ async function login(email, code) {
 /* ---------- Daten ---------- */
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
-  const [mem, ev, rs, at, nl] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token)").order("last_name").order("first_name"),
+  const [mem, ev, rs, at, nl, bd] = await Promise.all([
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present"),
-    db.from("newsletters").select("*")
+    db.from("newsletters").select("*"),
+    db.rpc("birthday_list")
   ]);
   if (mem.error || ev.error || rs.error || at.error) throw (mem.error || ev.error || rs.error || at.error);
   state.attendance = at.data;
   state.newsletters = nl.error ? [] : nl.data;
+  state.birthdays = bd.error ? [] : bd.data;
   state.allMembers = mem.data;
   state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
@@ -108,8 +110,9 @@ function renderMember() {
   if (state.filter === "zu") list = list.filter(e => myResp(e.id) === "yes");
   const open = upcoming().filter(e => !myResp(e.id)).length;
   if (state.letterId) return renderLetterView();
+  if (state.showBirthdays) return renderBirthdays();
   if (state.settings) return renderSettings();
-  let html = `<div class="settings-link"><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  let html = `<div class="settings-link"><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -205,6 +208,11 @@ function renderSettings() {
       <button class="btn" id="copy-cal">Link kopieren</button></div>
       <p class="rule">iPhone: „Kalender abonnieren“ antippen und bestätigen. Android/Google: Link kopieren und im Google Kalender am Computer unter „Weitere Kalender“ → „Per URL“ einfügen. Den Link nicht weitergeben, er ist persönlich.</p>
       <pre class="msg" id="cal-url">${esc(url)}</pre>` : `<p class="fn">Der Link ist noch nicht verfügbar.</p>`}
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <h2>Geburtstagsliste</h2>
+    <label class="check-line" for="bd-hide"><input id="bd-hide" type="checkbox" ${priv(state.me).hide_birthday ? "" : "checked"}> Meinen Geburtstag (Tag und Monat) in der Liste zeigen</label>
+    <p class="rule">Das Geburtsjahr sehen nur die Admins.</p>
   </div>`;
 }
 
@@ -556,7 +564,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }

@@ -115,3 +115,13 @@ tr.is-absent td:first-child{color:var(--muted);text-decoration:line-through;text
 .settings-link{display:flex;justify-content:flex-end;margin-bottom:6px}
 .settings-link .btn{font-size:13px;padding:6px 12px}
 .seg.sm button{padding:6px 2px}
+.settings-link{gap:8px;flex-wrap:wrap}
+td.bd-date{white-space:nowrap;width:64px;font-variant-numeric:tabular-nums}
+td.bd-date b{font-weight:800}
+td.bd-when{text-align:right;color:var(--muted);font-size:13px;width:36px}
+tr.is-round td{color:var(--loden)}
+.bd-today{border-color:var(--loden);background:var(--loden-soft)}
+.bd-big{margin:0;font-size:18px;font-weight:700}
+.bd-helper{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.check-line{display:flex;gap:8px;align-items:center;font-size:14px}
+.check-line input{width:18px;height:18px;accent-color:var(--loden)}

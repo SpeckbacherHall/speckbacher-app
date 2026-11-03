@@ -140,6 +140,7 @@ function renderNewsletterEditor() {
     <div class="sec"><h4>Termine im ${esc(nlMonthName(d.month))} <span>${thisMonth.length}</span></h4>${eventChecks(thisMonth, d.event_ids, "nl-ev")}</div>
     <div class="sec"><h4>Vorschau ${esc(nlMonthName(firstOfMonth(d.month, 1)))} <span>${nextMonth.length}</span></h4>
       <p class="rule">Optional: Termine des Folgemonats, die schon angekündigt werden sollen.</p>${eventChecks(nextMonth, d.preview_ids, "nl-pv")}</div>
+    ${roundBirthdayHelper(d.month)}
     <label for="nl-free">Freier Text unter den Terminen<textarea id="nl-free" rows="5" placeholder="z. B. Danke für die zahlreiche Teilnahme beim … / Hinweis zur Uniform / Glückwünsche …">${esc(d.free_text || "")}</textarea></label>
     <label for="nl-sign">Unterschrift<textarea id="nl-sign" rows="3">${esc(d.signature)}</textarea></label>
     <div class="row-actions">
