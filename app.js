@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", access: null, adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -54,26 +54,24 @@ function renderLogin(message) {
   $("#roles").hidden = true; $("#logout").hidden = true;
   $("#view").innerHTML = `<form class="panel login" id="login-form">
     <h2>Anmelden</h2>
-    <p class="fn">Gib die E-Mail-Adresse ein, die bei der Kompanie hinterlegt ist. Du bekommst einen Anmelde-Link zugeschickt.</p>
-    <label for="login-email">E-Mail-Adresse<input id="login-email" type="email" autocomplete="email" required></label>
-    <button class="btn yes" type="submit">Anmelde-Link schicken</button>
+    <p class="fn">Deine E-Mail-Adresse und deinen persönlichen Zugangscode bekommst du von der Kompanieführung.</p>
+    <label for="login-email">E-Mail-Adresse<input id="login-email" type="email" autocomplete="username" required></label>
+    <label for="login-code">Zugangscode<input id="login-code" autocomplete="current-password" autocapitalize="characters" placeholder="z. B. K7QM-4TXA" required></label>
+    <button class="btn yes" type="submit">Anmelden</button>
     ${message ? `<p class="rule">${esc(message)}</p>` : ""}
   </form>`;
 }
-async function sendLink(email) {
-  const { error } = await db.auth.signInWithOtp({
-    email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: location.origin + location.pathname }
-  });
+const normCode = c => {
+  const s = c.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4)}` : c.trim();
+};
+async function login(email, code) {
+  const { error } = await db.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: normCode(code) });
   if (error) {
-    const blocked = /saving new user|nicht freigeschaltet/i.test(error.message);
-    renderLogin(blocked
-      ? "Diese E-Mail-Adresse ist nicht freigeschaltet. Bitte wende dich an den Schriftführer."
-      : "Der Link konnte nicht verschickt werden. Bitte versuche es in ein paar Minuten noch einmal.");
     console.error(error);
-    return;
+    return renderLogin("E-Mail-Adresse oder Zugangscode stimmen nicht. Bitte prüfe die Eingabe oder frag nach einem neuen Code.");
   }
-  renderLogin(`Wir haben einen Anmelde-Link an ${email} geschickt. Öffne ihn auf diesem Gerät.`);
+  // Weiter geht es über onAuthStateChange (SIGNED_IN)
 }
 
 /* ---------- Daten ---------- */
@@ -181,7 +179,7 @@ function rows(list, empty) {
 function renderAdmin() {
   let html = `<div class="seg sm" role="group" aria-label="Admin-Bereich">
     <button data-atab="rueck" aria-pressed="${state.adminTab === "rueck"}">Rückmeldungen</button>
-    <button data-atab="tel" aria-pressed="${state.adminTab === "tel"}">Telefonliste</button>
+    <button data-atab="tel" aria-pressed="${state.adminTab === "tel"}">Mitglieder</button>
     <button data-atab="neu" aria-pressed="${state.adminTab === "neu"}">Neuer Termin</button></div>`;
   if (state.adminTab === "tel") return html + renderPhone();
   if (state.adminTab === "neu") return html + renderNew();
@@ -221,13 +219,45 @@ function phoneList() {
   const q = state.phoneQuery.toLowerCase();
   return state.members.filter(m => `${fullName(m)} ${m.rank || ""} ${m.role_title || ""}`.toLowerCase().includes(q));
 }
+function accessMessage(a) {
+  const url = location.origin + location.pathname;
+  return `Servus ${a.first_name}! Dein Zugang zur Speckbacher-App:\n${url}\nE-Mail: ${a.email}\nZugangscode: ${a.code}\nTipp: Seite am Handy öffnen und „Zum Home-Bildschirm“ hinzufügen.`;
+}
+function accessBox(m) {
+  const a = state.access;
+  if (!a || a.memberId !== m.id) return "";
+  const msg = accessMessage(a);
+  const phone = (priv(m).phone || "").replace(/[^\d]/g, "");
+  return `<tr><td colspan="2"><div class="access">
+    <p><b>Zugangscode für ${esc(a.first_name)}:</b> <span class="code">${esc(a.code)}</span></p>
+    <p class="fn">Der Code wird nur jetzt angezeigt. Ein neuer Code macht den alten ungültig.</p>
+    <pre class="msg" id="access-msg">${esc(msg)}</pre>
+    <div class="row-actions">
+      <button class="btn yes" id="copy-msg">Nachricht kopieren</button>
+      ${phone ? `<a class="btn" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Per WhatsApp senden</a>` : ""}
+    </div></div></td></tr>`;
+}
 function phoneRows(list) {
   if (!list.length) return `<p class="empty">Kein Mitglied gefunden.</p>`;
   return `<table><tbody>${list.map(m => {
     const p = priv(m);
-    return `<tr><td>${esc(fullName(m))}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span></td>
-      <td style="text-align:right">${p.phone ? `<a class="tel" href="tel:${esc(p.phone.replace(/\s/g, ""))}">${esc(p.phone)}</a>` : `<span class="fn">keine Nummer</span>`}</td></tr>`;
+    const access = !p.email ? `<span class="fn">keine E-Mail</span>`
+      : `<button class="btn ghost" data-access="${m.id}">${m.user_id ? "Neuer Code" : "Zugang erzeugen"}</button>`;
+    return `<tr><td>${esc(fullName(m))}${m.user_id ? ` <span class="pill">App</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span></td>
+      <td style="text-align:right">${p.phone ? `<a class="tel" href="tel:${esc(p.phone.replace(/\s/g, ""))}">${esc(p.phone)}</a>` : `<span class="fn">keine Nummer</span>`}<br>${access}</td></tr>${accessBox(m)}`;
   }).join("")}</tbody></table>`;
+}
+async function createAccess(memberId) {
+  const { data, error } = await db.functions.invoke("zugang", { body: { member_id: memberId } });
+  if (error) {
+    let msg = "Der Zugang konnte nicht erzeugt werden.";
+    try { msg = (await error.context.json()).error || msg; } catch (e) {}
+    return toast(msg);
+  }
+  const m = state.members.find(x => x.id === memberId);
+  if (m && !m.user_id) m.user_id = "neu";
+  state.access = { memberId, ...data };
+  $("#phone-list").innerHTML = phoneRows(phoneList());
 }
 function renderPhone() {
   return `<input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
@@ -286,9 +316,16 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; render(); return; }
+  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
+  if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
+  if (t.id === "copy-msg") {
+    const text = $("#access-msg").textContent;
+    try { await navigator.clipboard.writeText(text); toast("Nachricht kopiert."); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($("#access-msg")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Text markiert – jetzt kopieren."); }
+    return;
+  }
   if (t.id === "export") { exportCsv(state.events.find(x => x.id === state.openEvent)); return; }
   if (t.id === "delete") { state.confirmDelete = true; render(); return; }
   if (t.id === "delete-no") { state.confirmDelete = false; render(); return; }
@@ -308,7 +345,7 @@ document.addEventListener("submit", async ev => {
   ev.preventDefault();
   if (ev.target.id === "login-form") {
     const btn = ev.target.querySelector("button"); btn.disabled = true; btn.textContent = "Wird verschickt …";
-    return sendLink($("#login-email").value);
+    return login($("#login-email").value, $("#login-code").value);
   }
   if (ev.target.id === "new-form") {
     $("#f-submit").disabled = true;
