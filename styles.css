@@ -145,3 +145,8 @@ label.btn{cursor:pointer}
 .hist-list li:last-child{border-bottom:0}
 .hist-list li .fn{white-space:nowrap}
 .hist-list li.now span:first-child{font-weight:700}
+.changes{border-left:4px solid var(--red, #c12a28)}
+.change-row{padding:10px 0;border-top:1px solid var(--line)}
+.change-row p{margin:2px 0}
+.change-note{font-style:italic;margin:6px 0}
+.linkish{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}

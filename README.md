@@ -14,6 +14,7 @@ Pilotversion, Stand November 2026.
 | Kalender-Abo | `supabase/functions/kalender` | Persönlicher Abo-Link mit allen zugesagten Terminen |
 | Rundschreiben | `rundschreiben.js`, `letter.css`, Tabelle `newsletters` | Monatsbrief nach Briefvorlage, Veröffentlichung mit Push, Serienbrief |
 | Fibel | `fibel.js`, Tabelle `fibel_chapters` | Kapitel zum Lesen, Bearbeitung durch Admins |
+| Meine Daten | `meinedaten.js`, Tabelle `member_changes`, Trigger `log_member_change`/`notify_member_change` | Mitglieder ändern Telefon, Adresse, Geburtstag selbst; Admins bekommen eine Push-Nachricht |
 | Laufbahn | `laufbahn.js`, Tabelle `member_history` | Ränge, Funktionen, Auszeichnungen, Langjährigkeit und Schießleistung aus dem BTSK-Stammdatenblatt |
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
@@ -45,11 +46,13 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Rundschreiben:** Admin → Rundschreiben → „Neues Rundschreiben“. Monat wählen (die Termine des Monats sind vorausgewählt), optional Vorschau-Termine des Folgemonats anhaken, freien Text unten ergänzen, speichern. „In der App veröffentlichen“ zeigt es allen Mitgliedern und schickt eine Push-Nachricht. Mit „Erneut per Push schicken“ geht später eine Erinnerung an alle raus. Der Serienbrief für die Post („Postversand“ bzw. „Alle ohne App“) öffnet den Druckdialog, dort „Als PDF sichern“ oder drucken – am besten am Computer mit Chrome oder Edge. Absender, Fußzeile und Standardtexte stehen oben in `rundschreiben.js` (`LETTER`).
 
-**Fibel:** Mitglieder öffnen sie über „Fibel“ bei den Ausrückungen. Admins sehen dort zusätzlich „Neues Kapitel“ und „Kapitel bearbeiten“: Überschrift, Text (Leerzeile = Absatz, „## “ = Zwischenüberschrift), Reihenfolge und „Für alle veröffentlicht“. Entwürfe sehen nur Admins.
+**Fibel:** Die Kapitel (z. B. die Statuten 2006) stehen als Text in der Datenbank (Tabelle `fibel_chapters`). Originaldokumente wie PDFs werden von der App derzeit nicht gespeichert. Mitglieder öffnen sie über „Fibel“ bei den Ausrückungen. Admins sehen dort zusätzlich „Neues Kapitel“ und „Kapitel bearbeiten“: Überschrift, Text (Leerzeile = Absatz, „## “ = Zwischenüberschrift), Reihenfolge und „Für alle veröffentlicht“. Entwürfe sehen nur Admins.
 
 **Geburtstagsliste:** Mitglieder öffnen sie über „Geburtstage“ bei den Ausrückungen (heute, nächste 30 Tage, ganzes Jahr). Sichtbar sind nur Name, Tag und Monat; das Alter und runde Geburtstage sehen nur Admins. Jedes Mitglied kann sich unter „Erinnerungen & Kalender“ ausblenden. Im Rundschreiben-Editor schlägt die App die runden Geburtstage des Monats als Glückwunsch für den freien Text vor.
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
+
+**Meine Daten / Änderungsmeldungen:** Mitglieder ändern unter „Meine Daten“ Telefonnummern, Adresse und Geburtstag selbst und können dem Schriftführer eine Nachricht schicken (z. B. neue E-Mail-Adresse – die E-Mail ist die Anmeldung und wird nur vom Admin geändert). Jede Änderung landet in der Tabelle `member_changes`; alle Admins mit aktivierten Benachrichtigungen bekommen sofort eine Push-Nachricht. Offene Meldungen stehen oben unter Admin → Mitglieder und werden mit „Erledigt“ abgehakt (am besten nachdem sie im BTSK-Portal nachgetragen sind). Änderungen durch Admins werden nicht gemeldet.
 
 **Laufbahn & Auszeichnungen:** Jedes Mitglied sieht seine eigene Laufbahn unter „Meine Laufbahn“, Admins sehen sie in der Mitgliederbearbeitung. Die Daten stammen aus dem Stammdatenblatt-Export des BTSK (Stand 3.11.2026) und wurden einmalig eingespielt; Jungschützen und Jungmarketenderinnen sind nicht enthalten.
 

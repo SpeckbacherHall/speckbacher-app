@@ -84,20 +84,22 @@ async function login(email, code) {
 /* ---------- Daten ---------- */
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
-  const [mem, ev, rs, at, nl, bd, fb] = await Promise.all([
+  const [mem, ev, rs, at, nl, bd, fb, ch] = await Promise.all([
     db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on,membership_status,fee_liable,seniority_counts,phone_private,phone_work,comment)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present"),
     db.from("newsletters").select("*"),
     db.rpc("birthday_list"),
-    db.from("fibel_chapters").select("*")
+    db.from("fibel_chapters").select("*"),
+    db.from("member_changes").select("*").order("changed_at", { ascending: false }).limit(100)
   ]);
   if (mem.error || ev.error || rs.error || at.error) throw (mem.error || ev.error || rs.error || at.error);
   state.attendance = at.data;
   state.newsletters = nl.error ? [] : nl.data;
   state.birthdays = bd.error ? [] : bd.data;
   state.fibel = fb.error ? [] : fb.data;
+  state.changes = ch.error ? [] : ch.data;
   state.allMembers = mem.data;
   state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
@@ -116,7 +118,8 @@ function renderMember() {
   if (state.showFibel) return renderFibel();
   if (state.settings) return renderSettings();
   if (state.showHistory) return renderMyHistory();
-  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  if (state.showMyData) return renderMyData();
+  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -531,6 +534,7 @@ function renderPhone() {
   if (state.syncOpen) return renderSync();
   if (state.edit) return renderEdit();
   return `<div class="row-actions" style="margin-bottom:10px"><button class="btn" id="member-new">Neues Mitglied</button><button class="btn" id="sync-open">Abgleich mit BTSK-Export</button></div>
+  ${changesPanel()}
   <input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
   <div class="panel" id="phone-list">${phoneRows(phoneList())}</div>`;
 }
@@ -583,7 +587,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false; state.showMyData = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
@@ -716,6 +720,7 @@ async function boot() {
   try { const r = localStorage.getItem("sp-role"); if (r === "admin" || r === "member") state.role = r; } catch (e) {}
   render();
   openFromHash();
+  openChangesFromHash();
 }
 // Erst starten, wenn alle Skripte (auch rundschreiben.js) geladen sind
 db.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && !state.me && document.readyState !== "loading") start(); });

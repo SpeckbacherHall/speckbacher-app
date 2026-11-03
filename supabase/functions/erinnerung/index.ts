@@ -3,6 +3,7 @@
 //   die für einen Termin am nächsten Tag zugesagt haben. Jede Erinnerung geht nur einmal raus.
 // - Test (angemeldetes Mitglied, Body {"mode":"test"}): Probe-Nachricht an die eigenen Geräte.
 // - Rundschreiben (Admin, Body {"mode":"broadcast","title","body","url"}): Nachricht an alle aktiven Mitglieder.
+// - Datenänderung (Trigger auf member_changes, Header x-cron-secret, Body {"mode":"change","id"}): Push an alle Admins.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
     return reached;
   }
 
-  let body: { mode?: string; force?: boolean; title?: string; body?: string; url?: string } = {};
+  let body: { mode?: string; id?: number; force?: boolean; title?: string; body?: string; url?: string } = {};
   try { body = await req.json(); } catch { /* leer erlaubt */ }
 
   // --- Test durch ein angemeldetes Mitglied ---
@@ -75,8 +76,23 @@ Deno.serve(async (req) => {
     return json({ sent: reached.size });
   }
 
-  // --- Täglicher Lauf über den Zeitplan ---
   if (req.headers.get("x-cron-secret") !== await secret("cron_secret")) return json({ error: "Nicht erlaubt." }, 401);
+
+  // --- Datenänderung durch ein Mitglied (Datenbank-Trigger) → Push an alle Admins ---
+  if (body.mode === "change") {
+    const { data: c } = await db.from("member_changes").select("changes,note,members!member_changes_member_id_fkey(first_name,last_name)").eq("id", body.id).maybeSingle();
+    if (!c) return json({ error: "Änderung nicht gefunden." }, 404);
+    const LABELS: Record<string, string> = { phone: "Telefon", phone_private: "Telefon privat", phone_work: "Telefon beruflich", address: "Adresse", birthday: "Geburtstag" };
+    const fields = Object.keys(c.changes ?? {}).map((k) => LABELS[k] ?? k);
+    // deno-lint-ignore no-explicit-any
+    const m = c.members as any;
+    const text = fields.length ? `Geändert: ${fields.join(", ")}` : `Nachricht: ${(c.note ?? "").slice(0, 150)}`;
+    const { data: admins } = await db.from("members").select("id").eq("is_admin", true).eq("active", true);
+    const reached = await sendTo((admins ?? []).map((a) => a.id), { title: `Mitgliedsdaten: ${m?.first_name ?? ""} ${m?.last_name ?? ""}`.trim(), body: text, url: "./#aenderungen", tag: `change-${body.id}` });
+    return json({ sent: reached.size });
+  }
+
+  // --- Täglicher Lauf über den Zeitplan ---
   if (!body.force && viennaHour() !== 18) return json({ skipped: "nicht 18 Uhr in Wien" });
 
   const tomorrow = viennaDate(1);
