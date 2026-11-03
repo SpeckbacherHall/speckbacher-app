@@ -34,6 +34,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Termin ändern:** Admin → Rückmeldungen → Termin öffnen → „Bearbeiten“.
 
+**Anwesenheit erfassen:** Termin öffnen → „Anwesenheit“ (am Termintag und danach öffnet sich diese Ansicht automatisch). „Alle Zugesagten als ‚da‘“ setzen, dann einzelne Personen korrigieren und zum Schluss „Übrige als ‚nicht da‘“. Vergangene Termine der letzten zwölf Monate findest du unter Rückmeldungen → „Vergangene“. Der CSV-Export enthält die Anwesenheit.
+
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
 
 **Admin, Vorstand oder Sperre:** In der Mitgliederbearbeitung „Admin“, „Vorstand“ bzw. „Aktiv“ an- oder abhaken.

@@ -106,3 +106,9 @@ form.panel label.check input{width:18px;height:18px;accent-color:var(--loden)}
 .mini.yes{color:var(--good);border-color:var(--good)}
 .mini.no{color:var(--red);border-color:var(--red)}
 .mini:disabled{opacity:.5}
+.att{text-align:right;white-space:nowrap}
+.att .mini{padding:6px 12px;font-size:13px;margin-left:6px}
+.mini.yes.on{background:var(--good);color:var(--surface)}
+.mini.no.on{background:var(--red);color:var(--surface)}
+tr.is-present td:first-child{color:var(--good)}
+tr.is-absent td:first-child{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--red)}

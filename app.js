@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -29,7 +29,14 @@ const canDecline = e => e.kind === "kompanie" || e.kind === "vorstand";
 const fullName = m => `${m.first_name} ${m.last_name}`;
 const priv = m => (Array.isArray(m.member_private) ? m.member_private[0] : m.member_private) || {};
 const myResp = id => state.responses.find(r => r.event_id === id && r.member_id === state.me.id)?.status;
-const timesLine = e => e.muster_time ? `Antreten ${hm(e.muster_time)} · Beginn ${hm(e.start_time)} Uhr` : `Beginn ${hm(e.start_time)} Uhr`;
+const timesLine = e => {
+  const begin = e.start_time ? `Beginn ${hm(e.start_time)} Uhr` : "Uhrzeit folgt";
+  return e.muster_time ? `Antreten ${hm(e.muster_time)} · ${begin}` : begin;
+};
+const isPast = e => e.event_date < todayIso();
+const upcoming = () => state.events.filter(e => !isPast(e));
+const daysAgoIso = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Vienna" }); };
+const sortEvents = () => state.events.sort((a, b) => (a.event_date + (a.start_time || "99")).localeCompare(b.event_date + (b.start_time || "99")));
 
 let toastTimer;
 function toast(text) {
@@ -77,12 +84,14 @@ async function login(email, code) {
 /* ---------- Daten ---------- */
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
-  const [mem, ev, rs] = await Promise.all([
+  const [mem, ev, rs, at] = await Promise.all([
     db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,member_private(phone,rifle_number,email,needs_post,address,birthday)").order("last_name").order("first_name"),
-    db.from("events").select("*").gte("event_date", todayIso()).order("event_date").order("start_time"),
-    db.from("responses").select("event_id,member_id,status,entered_by")
+    db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
+    db.from("responses").select("event_id,member_id,status,entered_by"),
+    db.from("attendance").select("event_id,member_id,present")
   ]);
-  if (mem.error || ev.error || rs.error) throw (mem.error || ev.error || rs.error);
+  if (mem.error || ev.error || rs.error || at.error) throw (mem.error || ev.error || rs.error || at.error);
+  state.attendance = at.data;
   state.allMembers = mem.data;
   state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
@@ -92,15 +101,15 @@ async function loadAll() {
 
 /* ---------- Mitglied ---------- */
 function renderMember() {
-  let list = state.events;
+  let list = upcoming();
   if (state.filter === "offen") list = list.filter(e => !myResp(e.id));
   if (state.filter === "zu") list = list.filter(e => myResp(e.id) === "yes");
-  const open = state.events.filter(e => !myResp(e.id)).length;
+  const open = upcoming().filter(e => !myResp(e.id)).length;
   let html = `<p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
     ${[["alle", "Alle"], ["offen", "Offen"], ["zu", "Zugesagt"]].map(([k, l]) => `<button class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
   </div>`;
-  if (!state.events.length) return html + `<p class="empty" style="margin-top:16px">Derzeit sind keine Ausrückungen eingetragen.</p>`;
+  if (!upcoming().length) return html + `<p class="empty" style="margin-top:16px">Derzeit sind keine Ausrückungen eingetragen.</p>`;
   if (!list.length) return html + `<p class="empty" style="margin-top:16px">Keine Termine in dieser Auswahl.</p>`;
   let lastMonth = "";
   for (const e of list) {
@@ -137,16 +146,24 @@ async function setResp(eventId, status) {
 }
 function icsFor(e) {
   const d = e.event_date.replace(/-/g, "");
-  const start = (e.muster_time || e.start_time).slice(0, 5).replace(":", "") + "00";
-  const [h, m] = e.start_time.split(":").map(Number);
-  const endH = String(Math.min(h + 2, 23)).padStart(2, "0");
+  const first = e.muster_time || e.start_time;
+  const next = new Date(e.event_date + "T12:00:00"); next.setDate(next.getDate() + 1);
+  const dNext = next.toISOString().slice(0, 10).replace(/-/g, "");
+  let when;
+  if (first) {
+    const start = first.slice(0, 5).replace(":", "") + "00";
+    const [h, m] = (e.start_time || first).split(":").map(Number);
+    const endH = String(Math.min(h + 2, 23)).padStart(2, "0");
+    when = [`DTSTART;TZID=Europe/Vienna:${d}T${start}`, `DTEND;TZID=Europe/Vienna:${d}T${endH}${String(m).padStart(2, "0")}00`];
+  } else {
+    when = [`DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${dNext}`];
+  }
   const fold = s => String(s || "").replace(/[\\,;]/g, c => "\\" + c).replace(/\n/g, "\\n");
   return [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Speckbacher Schützenkompanie//App//DE", "BEGIN:VEVENT",
     `UID:speckbacher-${e.id}@speckbacher-schuetzen.at`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
-    `DTSTART;TZID=Europe/Vienna:${d}T${start}`,
-    `DTEND;TZID=Europe/Vienna:${d}T${endH}${String(m).padStart(2, "0")}00`,
+    ...when,
     `SUMMARY:${fold(e.title)}`,
     `LOCATION:${fold(e.place)}`,
     `DESCRIPTION:${fold(`${TYPES[e.kind]} · ${timesLine(e)}${e.dress ? " · Adjustierung: " + e.dress : ""}`)}`,
@@ -194,6 +211,47 @@ async function setRespFor(eventId, memberId, status) {
   if (status) state.responses.push(data);
   render();
 }
+function relevantMembers(e) {
+  return e.kind === "vorstand" ? state.members.filter(m => m.is_board) : state.members;
+}
+const presentOf = (e, id) => state.attendance.find(a => a.event_id === e.id && a.member_id === id)?.present;
+function attendanceCounts(e) {
+  const as = state.attendance.filter(a => a.event_id === e.id);
+  return { present: as.filter(a => a.present).length, absent: as.filter(a => !a.present).length };
+}
+function attendanceSummary(e) {
+  const t = tally(e), c = attendanceCounts(e);
+  const noShows = t.yes.filter(m => presentOf(e, m.id) === false).length;
+  const unannounced = relevantMembers(e).filter(m => presentOf(e, m.id) === true && !t.yes.includes(m)).length;
+  return `<div class="counts"><span><i class="dot" style="background:var(--good)"></i><b>${c.present}</b> anwesend</span><span><i class="dot" style="background:var(--red)"></i><b>${c.absent}</b> nicht da</span><span><b>${relevantMembers(e).length - c.present - c.absent}</b> nicht erfasst</span></div>
+  ${c.present + c.absent ? `<p class="rule">${noShows} zugesagt, aber nicht da · ${unannounced} da ohne Zusage</p>` : ""}`;
+}
+function attendanceList(e, t) {
+  // Reihenfolge: Zugesagte zuerst, dann ohne Rückmeldung, dann Abgesagte
+  const order = [...t.yes, ...t.open, ...t.no];
+  const label = m => t.yes.includes(m) ? "zugesagt" : t.no.includes(m) ? "abgesagt" : "keine Rückmeldung";
+  const rowsHtml = order.map(m => {
+    const p = presentOf(e, m.id);
+    return `<tr class="${p === true ? "is-present" : p === false ? "is-absent" : ""}"><td>${esc(fullName(m))}<br><span class="fn">${label(m)}${priv(m).rifle_number ? " · Nr. " + esc(priv(m).rifle_number) : ""}</span></td>
+      <td class="att"><button class="mini yes ${p === true ? "on" : ""}" data-att="${m.id}" data-val="true" aria-pressed="${p === true}">da</button><button class="mini no ${p === false ? "on" : ""}" data-att="${m.id}" data-val="false" aria-pressed="${p === false}">nicht da</button></td></tr>`;
+  }).join("");
+  return `<div class="row-actions" style="margin-top:12px">
+      <button class="btn" id="att-all-yes" ${t.yes.length ? "" : "disabled"}>Alle Zugesagten als „da“</button>
+      <button class="btn" id="att-rest-no">Übrige als „nicht da“</button>
+    </div>
+    <p class="rule">Tippe „da“ oder „nicht da“. Nochmal tippen hebt die Auswahl auf.</p>
+    <table class="att-table"><tbody>${rowsHtml}</tbody></table>`;
+}
+async function setAttendance(e, memberIds, present) {
+  const q = present === null
+    ? db.from("attendance").delete().eq("event_id", e.id).in("member_id", memberIds)
+    : db.from("attendance").upsert(memberIds.map(id => ({ event_id: e.id, member_id: id, present })));
+  const { error } = await q;
+  if (error) return fail(error, "Die Anwesenheit konnte nicht gespeichert werden.");
+  state.attendance = state.attendance.filter(a => !(a.event_id === e.id && memberIds.includes(a.member_id)));
+  if (present !== null) memberIds.forEach(id => state.attendance.push({ event_id: e.id, member_id: id, present }));
+  render();
+}
 function renderAdmin() {
   let html = `<div class="seg sm" role="group" aria-label="Admin-Bereich">
     <button data-atab="rueck" aria-pressed="${state.adminTab === "rueck"}">Rückmeldungen</button>
@@ -206,12 +264,18 @@ function renderAdmin() {
     if (e && state.editEvent) return html + renderNew(e);
     if (e) {
       const t = tally(e);
+      // Am Termintag und danach öffnet der Termin direkt in der Anwesenheit
+      const tab = state.detailTab || (e.event_date <= todayIso() ? "anw" : "rueck");
       return html + `<button class="back" id="back">‹ Alle Termine</button>
       <div class="panel">
         <span class="type t-${e.kind}">${TYPES[e.kind]}</span>
         <h2>${esc(e.title)}</h2>
         <p class="meta"><span>${longDate(e.event_date)} · ${timesLine(e)}</span><span>${esc(e.place)}${e.dress ? " · " + esc(e.dress) : ""}</span></p>
-        ${bar(t, canDecline(e))}
+        ${tab === "rueck" ? bar(t, canDecline(e)) : attendanceSummary(e)}
+        <div class="seg sm" role="group" aria-label="Ansicht des Termins">
+          <button data-dtab="rueck" aria-pressed="${tab === "rueck"}">Rückmeldungen</button>
+          <button data-dtab="anw" aria-pressed="${tab === "anw"}">Anwesenheit</button>
+        </div>
         <div class="row-actions">
           <button class="btn" id="event-edit">Bearbeiten</button>
           <button class="btn" id="export">Liste als CSV</button>
@@ -219,19 +283,28 @@ function renderAdmin() {
             ? `<span class="fn">Termin wirklich löschen?</span><button class="btn danger" id="delete-yes">Ja, löschen</button><button class="btn ghost" id="delete-no">Abbrechen</button>`
             : `<button class="btn danger" id="delete">Termin löschen</button>`}
         </div>
+        ${tab === "anw" ? attendanceList(e, t) : `
         <div class="sec"><h4>Zugesagt <span>${t.yes.length}</span></h4>${rows(t.yes, "Noch keine Zusagen.", e, "yes")}</div>
         ${canDecline(e) ? `<div class="sec"><h4>Abgesagt <span>${t.no.length}</span></h4>${rows(t.no, "Keine Absagen.", e, "no")}</div>` : ""}
-        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>${rows(t.open, "Alle haben geantwortet.", e, "open")}</div>
+        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>${rows(t.open, "Alle haben geantwortet.", e, "open")}</div>`}
       </div>`;
     }
     state.openEvent = null;
   }
-  if (!state.events.length) return html + `<p class="empty">Noch keine Termine. Lege den ersten unter „Neuer Termin“ an.</p>`;
+  html += `<div class="filters" role="group" aria-label="Zeitraum">
+    <button class="chip" data-when="kommend" aria-pressed="${state.when === "kommend"}">Kommende</button>
+    <button class="chip" data-when="vergangen" aria-pressed="${state.when === "vergangen"}">Vergangene</button></div>`;
+  const list = state.when === "kommend" ? upcoming() : state.events.filter(isPast).reverse();
+  if (!list.length) return html + `<p class="empty" style="margin-top:12px">${state.when === "kommend" ? "Keine kommenden Termine. Lege einen unter „Neuer Termin“ an." : "Keine vergangenen Termine in den letzten zwölf Monaten."}</p>`;
   html += `<div class="list">`;
-  for (const e of state.events) {
+  let lastMonth = "";
+  for (const e of list) {
+    const mo = monthYear(e.event_date);
+    if (mo !== lastMonth) { html += `<div class="month">${mo}</div>`; lastMonth = mo; }
+    const a = attendanceCounts(e);
     html += `<button class="card ev" data-open="${e.id}">
       <div class="date"><div class="d">${day(e.event_date)}</div><div class="w">${wd(e.event_date)}</div></div>
-      <div class="body"><span class="type t-${e.kind}">${TYPES[e.kind]}</span><h3>${esc(e.title)}</h3>${bar(tally(e), canDecline(e))}</div></button>`;
+      <div class="body"><span class="type t-${e.kind}">${TYPES[e.kind]}</span><h3>${esc(e.title)}</h3>${isPast(e) ? `<div class="counts"><span><i class="dot" style="background:var(--good)"></i><b>${a.present}</b> anwesend</span><span><i class="dot" style="background:var(--red)"></i><b>${a.absent}</b> nicht da</span>${a.present + a.absent === 0 ? `<span>Anwesenheit nicht erfasst</span>` : ""}</div>` : bar(tally(e), canDecline(e))}</div></button>`;
   }
   return html + `</div>`;
 }
@@ -366,7 +439,7 @@ function renderNew(e = null) {
     <label for="f-title">Bezeichnung<input id="f-title" required placeholder="z. B. Herz-Jesu-Prozession" value="${v("title")}"></label>
     <div class="grid2">
       <label for="f-date">Datum<input id="f-date" type="date" required ${e ? "" : `min="${todayIso()}"`} value="${v("event_date")}"></label>
-      <label for="f-time">Beginn<input id="f-time" type="time" required value="${t("start_time")}"></label>
+      <label for="f-time">Beginn (leer = folgt)<input id="f-time" type="time" value="${t("start_time")}"></label>
     </div>
     <div class="grid2">
       <label for="f-muster">Antreten (optional)<input id="f-muster" type="time" value="${t("muster_time")}"></label>
@@ -379,8 +452,9 @@ function renderNew(e = null) {
 }
 function exportCsv(e) {
   const t = tally(e);
-  const line = (m, s) => [fullName(m), m.rank || "", m.role_title || "", priv(m).rifle_number || "", priv(m).phone || "", s].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
-  const csv = "﻿Name;Rang;Funktion;Gewehrnummer;Telefon;Rückmeldung\r\n" +
+  const att = m => { const p = presentOf(e, m.id); return p === true ? "anwesend" : p === false ? "nicht anwesend" : ""; };
+  const line = (m, s) => [fullName(m), m.rank || "", m.role_title || "", priv(m).rifle_number || "", priv(m).phone || "", s, att(m)].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
+  const csv = "\uFEFFName;Rang;Funktion;Gewehrnummer;Telefon;Rückmeldung;Anwesenheit\r\n" +
     [...t.yes.map(m => line(m, "zugesagt")), ...t.no.map(m => line(m, "abgesagt")), ...t.open.map(m => line(m, "offen"))].join("\r\n");
   download(`Rueckmeldungen_${e.event_date}_${e.title.replace(/[^\wäöüÄÖÜß-]+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
 }
@@ -413,7 +487,7 @@ document.addEventListener("click", async ev => {
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
   if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; render(); return; }
-  if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; render(); scrollTo(0, 0); return; }
+  if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
   if (d.edit) { state.edit = d.edit; state.access = null; render(); scrollTo(0, 0); return; }
@@ -428,6 +502,21 @@ document.addEventListener("click", async ev => {
   if (t.id === "event-edit") { state.editEvent = true; render(); scrollTo(0, 0); return; }
   if (t.id === "event-edit-cancel") { state.editEvent = false; render(); return; }
   if (d.set !== undefined && d.status !== undefined) { t.disabled = true; return setRespFor(state.openEvent, d.set, d.status || null); }
+  if (d.when) { state.when = d.when; render(); return; }
+  if (d.dtab) { state.detailTab = d.dtab; render(); return; }
+  if (d.att) {
+    const e = state.events.find(x => x.id === state.openEvent);
+    const val = d.val === "true";
+    t.disabled = true;
+    return setAttendance(e, [d.att], presentOf(e, d.att) === val ? null : val);
+  }
+  if (t.id === "att-all-yes") { const e = state.events.find(x => x.id === state.openEvent); return setAttendance(e, tally(e).yes.map(m => m.id), true); }
+  if (t.id === "att-rest-no") {
+    const e = state.events.find(x => x.id === state.openEvent);
+    const rest = relevantMembers(e).filter(m => presentOf(e, m.id) === undefined).map(m => m.id);
+    if (!rest.length) return toast("Alle sind bereits erfasst.");
+    return setAttendance(e, rest, false);
+  }
   if (t.id === "export") { exportCsv(state.events.find(x => x.id === state.openEvent)); return; }
   if (t.id === "delete") { state.confirmDelete = true; render(); return; }
   if (t.id === "delete-no") { state.confirmDelete = false; render(); return; }
@@ -455,7 +544,7 @@ document.addEventListener("submit", async ev => {
     const editing = state.editEvent ? state.openEvent : null;
     const row = {
       kind: $("#f-kind").value, title: $("#f-title").value.trim(), event_date: $("#f-date").value,
-      start_time: $("#f-time").value, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
+      start_time: $("#f-time").value || null, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
       dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null
     };
     if (!editing) row.created_by = state.me.id;
@@ -465,8 +554,8 @@ document.addEventListener("submit", async ev => {
     if (error) { $("#f-submit").disabled = false; return fail(error, "Der Termin konnte nicht gespeichert werden."); }
     state.events = state.events.filter(x => x.id !== data.id);
     state.editEvent = false;
-    if (data.event_date >= todayIso()) state.events.push(data);
-    state.events.sort((a, b) => (a.event_date + a.start_time).localeCompare(b.event_date + b.start_time));
+    state.events.push(data);
+    sortEvents();
     state.adminTab = "rueck"; state.openEvent = data.id; render(); scrollTo(0, 0);
     toast(editing ? "Änderungen gespeichert." : "Termin veröffentlicht.");
   }
