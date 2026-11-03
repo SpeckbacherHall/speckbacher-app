@@ -151,7 +151,10 @@ function renderNewsletterEditor() {
   ${saved ? `<div class="panel" style="margin-top:12px">
     <h2>Verschicken</h2>
     ${saved.published_at
-      ? `<p class="fn">Veröffentlicht am ${dmy(saved.published_at.slice(0, 10))}. Mitglieder sehen es in der App; Änderungen nach dem Speichern sind sofort sichtbar.</p>`
+      ? `<p class="fn">Veröffentlicht am ${dmy(saved.published_at.slice(0, 10))}. Mitglieder sehen es in der App; Änderungen nach dem Speichern sind sofort sichtbar.</p>
+        ${state.nlResendConfirm
+          ? `<p><b>Rundschreiben nochmals per Push an alle schicken?</b></p><div class="row-actions"><button class="btn yes" id="nl-resend-yes">Ja, erneut schicken</button><button class="btn ghost" id="nl-resend-no">Abbrechen</button></div>`
+          : `<div class="row-actions"><button class="btn" id="nl-resend">Erneut per Push schicken</button></div>`}`
       : state.nlConfirm
         ? `<p><b>Jetzt veröffentlichen und alle mit Erinnerungen per Push benachrichtigen?</b></p><div class="row-actions"><button class="btn yes" id="nl-publish-yes">Ja, veröffentlichen</button><button class="btn ghost" id="nl-publish-no">Abbrechen</button></div>`
         : `<p class="fn">Erst speichern, dann veröffentlichen. Alle Mitglieder sehen es danach in der App und bekommen eine Push-Nachricht.</p><div class="row-actions"><button class="btn yes" id="nl-publish">In der App veröffentlichen</button></div>`}
@@ -210,10 +213,18 @@ async function publishNewsletter() {
   if (error) return fail(error, "Veröffentlichen hat nicht geklappt.");
   state.newsletters = state.newsletters.filter(n => n.id !== nl.id).concat(data);
   state.nlConfirm = false; render();
+  const sent = await sendNewsletterPush(nl, false);
+  toast(sent === null ? "Veröffentlicht. Die Push-Nachricht konnte nicht verschickt werden." : `Veröffentlicht und an ${sent} Mitglieder mit Erinnerungen geschickt.`);
+}
+// Push an alle aktiven Mitglieder; again = erneutes Verschicken (Erinnerung)
+async function sendNewsletterPush(nl, again) {
   const r = await db.functions.invoke("erinnerung", { body: {
-    mode: "broadcast", title: `Rundschreiben ${nlMonthTitle(nl.month)}`,
-    body: `Die Termine für ${nlMonthName(nl.month)} sind da. Bitte gib in der App deine Rückmeldung.`, url: `./#rs-${nl.id}` } });
-  toast(r.error ? "Veröffentlicht. Die Push-Nachricht konnte nicht verschickt werden." : `Veröffentlicht und an ${r.data?.sent ?? 0} Mitglieder mit Erinnerungen geschickt.`);
+    mode: "broadcast",
+    title: again ? `Erinnerung: Rundschreiben ${nlMonthTitle(nl.month)}` : `Rundschreiben ${nlMonthTitle(nl.month)}`,
+    body: again ? `Bitte gib in der App deine Rückmeldung für die Termine im ${nlMonthName(nl.month)}.`
+                : `Die Termine für ${nlMonthName(nl.month)} sind da. Bitte gib in der App deine Rückmeldung.`,
+    url: `./#rs-${nl.id}` } });
+  return r.error ? null : (r.data?.sent ?? 0);
 }
 
 /* ---------- Steuerung ---------- */
@@ -228,13 +239,21 @@ document.addEventListener("click", async ev => {
   if (d.nl) {
     const n = state.newsletters.find(x => x.id === +d.nl);
     state.nlDraft = { ...n, event_ids: [...n.event_ids], preview_ids: [...n.preview_ids] };
-    state.nlEdit = true; state.nlShowPreview = false; state.nlConfirm = false; render(); scrollTo(0, 0); return;
+    state.nlEdit = true; state.nlShowPreview = false; state.nlConfirm = false; state.nlResendConfirm = false; render(); scrollTo(0, 0); return;
   }
   if (t.id === "nl-back") { state.nlEdit = false; render(); return; }
   if (t.id === "nl-preview") { readNewsletterForm(); state.nlShowPreview = true; render(); document.querySelector(".letter-screen")?.scrollIntoView({ behavior: "smooth" }); return; }
   if (t.id === "nl-publish") { state.nlConfirm = true; render(); return; }
   if (t.id === "nl-publish-no") { state.nlConfirm = false; render(); return; }
   if (t.id === "nl-publish-yes") { t.disabled = true; return publishNewsletter(); }
+  if (t.id === "nl-resend") { state.nlResendConfirm = true; render(); return; }
+  if (t.id === "nl-resend-no") { state.nlResendConfirm = false; render(); return; }
+  if (t.id === "nl-resend-yes") {
+    t.disabled = true;
+    const sent = await sendNewsletterPush(state.newsletters.find(n => n.id === state.nlDraft.id), true);
+    state.nlResendConfirm = false; render();
+    return toast(sent === null ? "Die Push-Nachricht konnte nicht verschickt werden." : `Erneut an ${sent} Mitglieder mit Erinnerungen geschickt.`);
+  }
   const saved = () => state.newsletters.find(n => n.id === state.nlDraft?.id);
   if (t.id === "nl-print-post") return printLetters(saved(), postRecipients());
   if (t.id === "nl-print-noapp") return printLetters(saved(), noAppRecipients());

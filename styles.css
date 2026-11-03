@@ -131,3 +131,5 @@ tr.is-round td{color:var(--loden)}
 .fibel-text h2{font-size:24px}
 .fibel-text h3{font-size:17px;margin:8px 0 0}
 .fibel-text p{margin:0;max-width:65ch}
+.danger-box{border:1px solid var(--red);background:var(--red-soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.danger-box p{margin:0}

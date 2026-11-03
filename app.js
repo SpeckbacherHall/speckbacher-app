@@ -470,6 +470,11 @@ function renderEdit() {
     </div>
     ${!isNew && m.user_id ? `<p class="rule">Eine geänderte E-Mail-Adresse gilt sofort auch für die Anmeldung. Der Zugangscode bleibt gleich.</p>` : ""}
     <div class="row-actions"><button class="btn yes" type="submit" id="e-submit">Speichern</button><button class="btn ghost" type="button" id="edit-cancel2">Abbrechen</button></div>
+    ${!isNew && m.id !== state.me.id ? (state.confirmMemberDelete
+      ? `<div class="danger-box"><p><b>${esc(fullName(m))} endgültig löschen?</b></p>
+          <p class="fn">Auch der App-Zugang sowie alle Rückmeldungen und Anwesenheiten dieser Person werden gelöscht. Das lässt sich nicht rückgängig machen. Wer nur ausgetreten ist, wird besser mit „Aktiv“ abgehakt – dann bleibt die Geschichte erhalten.</p>
+          <div class="row-actions"><button class="btn danger" type="button" id="member-delete-yes">Ja, endgültig löschen</button><button class="btn ghost" type="button" id="member-delete-no">Abbrechen</button></div></div>`
+      : `<div class="row-actions"><button class="btn danger" type="button" id="member-delete">Mitglied löschen</button></div>`) : ""}
   </form>`;
 }
 async function saveMember() {
@@ -580,7 +585,23 @@ document.addEventListener("click", async ev => {
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
-  if (d.edit) { state.edit = d.edit; state.access = null; render(); scrollTo(0, 0); return; }
+  if (d.edit) { state.edit = d.edit; state.access = null; state.confirmMemberDelete = false; render(); scrollTo(0, 0); return; }
+  if (t.id === "member-delete") { state.confirmMemberDelete = true; render(); return; }
+  if (t.id === "member-delete-no") { state.confirmMemberDelete = false; render(); return; }
+  if (t.id === "member-delete-yes") {
+    t.disabled = true;
+    const id = state.edit;
+    const name = fullName(state.allMembers.find(x => x.id === id));
+    const { error } = await db.functions.invoke("zugang", { body: { member_id: id, action: "delete" } });
+    if (error) {
+      let msg = "Das Mitglied konnte nicht gelöscht werden.";
+      try { msg = (await error.context.json()).error || msg; } catch (e) {}
+      t.disabled = false; return toast(msg);
+    }
+    await loadAll();
+    state.edit = null; state.confirmMemberDelete = false; render(); scrollTo(0, 0);
+    return toast(`${name} wurde gelöscht.`);
+  }
   if (t.id === "member-new") { state.edit = "new"; state.access = null; render(); scrollTo(0, 0); return; }
   if (t.id === "edit-cancel" || t.id === "edit-cancel2") { state.edit = null; render(); return; }
   if (t.id === "copy-msg") {

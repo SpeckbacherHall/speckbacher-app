@@ -1,6 +1,7 @@
 // Edge Function "zugang": Ein Admin erzeugt für ein Mitglied einen persönlichen Zugangscode.
 // Der Code wird als Passwort des Kontos gesetzt; ein neuer Code macht den alten ungültig.
 // Mit action "email" wird nur die Anmelde-E-Mail an die Mitgliedsdaten angeglichen.
+// Mit action "delete" wird das Mitglied samt App-Zugang und allen Rückmeldungen endgültig gelöscht.
 // Kein Mailversand: der Admin schickt E-Mail-Adresse und Code selbst an das Mitglied.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -43,6 +44,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     memberId = body.member_id;
     if (body.action === "email") action = "email";
+    if (body.action === "delete") action = "delete";
   } catch {
     return json({ error: "Ungültige Anfrage." }, 400);
   }
@@ -52,6 +54,18 @@ Deno.serve(async (req) => {
     .select("id,user_id,first_name,active,member_private(email)")
     .eq("id", memberId).maybeSingle();
   if (!m) return json({ error: "Mitglied nicht gefunden." }, 404);
+
+  // Endgültig löschen: zuerst den App-Zugang, dann das Mitglied (Rückmeldungen usw. folgen per Cascade)
+  if (action === "delete") {
+    if (m.id === me.id) return json({ error: "Du kannst dich nicht selbst löschen." }, 400);
+    if (m.user_id) {
+      const { error } = await admin.auth.admin.deleteUser(m.user_id);
+      if (error) return json({ error: "Der App-Zugang konnte nicht entfernt werden." }, 500);
+    }
+    const { error } = await admin.from("members").delete().eq("id", m.id);
+    if (error) return json({ error: "Das Mitglied konnte nicht gelöscht werden." }, 500);
+    return json({ ok: true });
+  }
   if (!m.active) return json({ error: "Dieses Mitglied ist nicht aktiv." }, 400);
   const p = Array.isArray(m.member_private) ? m.member_private[0] : m.member_private;
   const email = p?.email;

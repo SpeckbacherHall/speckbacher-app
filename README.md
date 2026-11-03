@@ -42,13 +42,15 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Erinnerungen und Kalender (Mitglieder):** Oben bei den Ausrückungen „Erinnerungen & Kalender“. Am iPhone funktionieren Erinnerungen nur, wenn die App über „Zum Home-Bildschirm“ installiert ist. Die Push-Schlüssel und das Kennwort des Zeitplans liegen im Supabase Vault (`vapid_public`, `vapid_private`, `cron_secret`).
 
-**Rundschreiben:** Admin → Rundschreiben → „Neues Rundschreiben“. Monat wählen (die Termine des Monats sind vorausgewählt), optional Vorschau-Termine des Folgemonats anhaken, freien Text unten ergänzen, speichern. „In der App veröffentlichen“ zeigt es allen Mitgliedern und schickt eine Push-Nachricht. Der Serienbrief für die Post („Postversand“ bzw. „Alle ohne App“) öffnet den Druckdialog, dort „Als PDF sichern“ oder drucken – am besten am Computer mit Chrome oder Edge. Absender, Fußzeile und Standardtexte stehen oben in `rundschreiben.js` (`LETTER`).
+**Rundschreiben:** Admin → Rundschreiben → „Neues Rundschreiben“. Monat wählen (die Termine des Monats sind vorausgewählt), optional Vorschau-Termine des Folgemonats anhaken, freien Text unten ergänzen, speichern. „In der App veröffentlichen“ zeigt es allen Mitgliedern und schickt eine Push-Nachricht. Mit „Erneut per Push schicken“ geht später eine Erinnerung an alle raus. Der Serienbrief für die Post („Postversand“ bzw. „Alle ohne App“) öffnet den Druckdialog, dort „Als PDF sichern“ oder drucken – am besten am Computer mit Chrome oder Edge. Absender, Fußzeile und Standardtexte stehen oben in `rundschreiben.js` (`LETTER`).
 
 **Fibel:** Mitglieder öffnen sie über „Fibel“ bei den Ausrückungen. Admins sehen dort zusätzlich „Neues Kapitel“ und „Kapitel bearbeiten“: Überschrift, Text (Leerzeile = Absatz, „## “ = Zwischenüberschrift), Reihenfolge und „Für alle veröffentlicht“. Entwürfe sehen nur Admins.
 
 **Geburtstagsliste:** Mitglieder öffnen sie über „Geburtstage“ bei den Ausrückungen (heute, nächste 30 Tage, ganzes Jahr). Sichtbar sind nur Name, Tag und Monat; das Alter und runde Geburtstage sehen nur Admins. Jedes Mitglied kann sich unter „Erinnerungen & Kalender“ ausblenden. Im Rundschreiben-Editor schlägt die App die runden Geburtstage des Monats als Glückwunsch für den freien Text vor.
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
+
+**Mitglied löschen:** In der Mitgliederbearbeitung „Mitglied löschen“ und die Rückfrage bestätigen. Entfernt auch den App-Zugang sowie alle Rückmeldungen und Anwesenheiten. Für Ausgetretene ist „Aktiv“ abhaken meist besser, dann bleibt die Geschichte erhalten.
 
 **Admin, Vorstand oder Sperre:** In der Mitgliederbearbeitung „Admin“, „Vorstand“ bzw. „Aktiv“ an- oder abhaken.
 
