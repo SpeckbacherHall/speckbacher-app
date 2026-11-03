@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://eaqxzkjffnxdtpxrfwtu.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Speckbacher</title>
 <meta name="description" content="App der Speckbacher Schützenkompanie Hall in Tirol: Ausrückungen und Rückmeldungen">
@@ -12,8 +13,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Speckbacher">
 <link rel="preload" href="fonts/Karla.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="letter.css">
+<link rel="stylesheet" href="styles.css?v=2026-11-03.2">
+<link rel="stylesheet" href="letter.css?v=2026-11-03.2">
 </head>
 <body>
 <div class="app">
@@ -31,14 +32,15 @@
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js"></script>
-<script src="app.js"></script>
-<script src="rundschreiben.js"></script>
-<script src="geburtstage.js"></script>
-<script src="fibel.js"></script>
-<script src="abgleich.js"></script>
-<script src="laufbahn.js"></script>
-<script src="meinedaten.js"></script>
+<!-- supabase-js 2.45.4 liegt im Repository (vendor/), damit kein fremder Server Code in die App einschleusen kann -->
+<script src="vendor/supabase-2.45.4.js"></script>
+<script src="config.js?v=2026-11-03.2"></script>
+<script src="app.js?v=2026-11-03.2"></script>
+<script src="rundschreiben.js?v=2026-11-03.2"></script>
+<script src="geburtstage.js?v=2026-11-03.2"></script>
+<script src="fibel.js?v=2026-11-03.2"></script>
+<script src="abgleich.js?v=2026-11-03.2"></script>
+<script src="laufbahn.js?v=2026-11-03.2"></script>
+<script src="meinedaten.js?v=2026-11-03.2"></script>
 </body>
 </html>

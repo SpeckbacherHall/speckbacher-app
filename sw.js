@@ -20,7 +20,9 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = new URL(event.notification.data?.url || "./", self.registration.scope).href;
+  // Nur Adressen innerhalb der App öffnen, nie fremde Seiten
+  let url = new URL(event.notification.data?.url || "./", self.registration.scope).href;
+  if (!url.startsWith(self.registration.scope)) url = self.registration.scope;
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of all) {

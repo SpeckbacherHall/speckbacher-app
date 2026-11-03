@@ -12,14 +12,19 @@ const VTIMEZONE = [
   "BEGIN:STANDARD", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "TZNAME:CET", "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD",
   "END:VTIMEZONE",
 ];
-const esc = (s: string | null) => String(s ?? "").replace(/[\\,;]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
-// Zeilen über 75 Zeichen nach RFC 5545 falten
+const esc = (s: string | null) => String(s ?? "").replace(/[\\,;]/g, (c) => "\\" + c).replace(/\r?\n/g, "\\n").replace(/\r/g, "");
+// Zeilen nach RFC 5545 bei 75 Bytes (UTF-8) falten, ohne ein Zeichen zu zerteilen
+const enc = new TextEncoder();
 const fold = (line: string) => {
   const out: string[] = [];
-  let rest = line;
-  while (rest.length > 74) { out.push(rest.slice(0, 74)); rest = " " + rest.slice(74); }
-  out.push(rest);
-  return out.join("\r\n");
+  let cur = "", bytes = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > (out.length ? 74 : 75)) { out.push(cur); cur = ""; bytes = 0; }
+    cur += ch; bytes += n;
+  }
+  out.push(cur);
+  return out.join("\r\n ");
 };
 const hm = (t: string | null) => (t ?? "").slice(0, 5);
 

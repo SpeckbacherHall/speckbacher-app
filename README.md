@@ -19,7 +19,7 @@ Pilotversion, Stand November 2026.
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
 
-Es gibt keinen Build-Schritt: Die Dateien im Repository sind genau das, was online läuft.
+Es gibt keinen Build-Schritt: Die Dateien im Repository sind genau das, was online läuft. Die Supabase-Bibliothek liegt fest im Ordner `vendor/` (kein Nachladen von fremden Servern); eine Content-Security-Policy in `index.html` erlaubt Skripte nur von der eigenen Adresse.
 
 ## Rechte
 
@@ -62,7 +62,7 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Admin, Vorstand oder Sperre:** In der Mitgliederbearbeitung „Admin“, „Vorstand“ bzw. „Aktiv“ an- oder abhaken.
 
-**Änderung an der App veröffentlichen:** Änderung in den `main`-Branch committen; GitHub Pages aktualisiert die Seite nach ein bis zwei Minuten.
+**Änderung an der App veröffentlichen:** In `index.html` die Versionsnummer hinter `?v=` bei allen CSS- und JS-Dateien erhöhen (damit Handys nicht alte und neue Dateien mischen), dann in den `main`-Branch committen; GitHub Pages aktualisiert die Seite nach ein bis zwei Minuten.
 
 ## Einmalige Einrichtung
 

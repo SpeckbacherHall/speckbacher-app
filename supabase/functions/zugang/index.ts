@@ -16,10 +16,16 @@ const json = (body: unknown, status = 200) =>
 
 // Ohne leicht verwechselbare Zeichen (0/O, 1/I/L)
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+// Gleichverteilt: Zufallsbytes ab 248 (= 8 × 31) verwerfen, sonst wären einige Zeichen häufiger
 function newCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  const chars = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
-  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+  const chars: string[] = [];
+  const limit = 256 - (256 % ALPHABET.length);
+  while (chars.length < 8) {
+    for (const b of crypto.getRandomValues(new Uint8Array(16))) {
+      if (b < limit && chars.length < 8) chars.push(ALPHABET[b % ALPHABET.length]);
+    }
+  }
+  return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
 }
 
 Deno.serve(async (req) => {

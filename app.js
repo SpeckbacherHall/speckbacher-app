@@ -82,13 +82,30 @@ async function login(email, code) {
 }
 
 /* ---------- Daten ---------- */
+// Supabase liefert pro Abfrage höchstens 1000 Zeilen. Rückmeldungen und Anwesenheiten
+// wachsen darüber hinaus (rund 60 Mitglieder × 100 Termine), daher seitenweise laden.
+async function fetchAll(build) {
+  const size = 1000;
+  let rows = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await build().range(from, from + size - 1);
+    if (error) return { data: null, error };
+    rows = rows.concat(data);
+    if (data.length < size) return { data: rows, error: null };
+  }
+}
+const stripJoin = r => (r.data ? { ...r, data: r.data.map(({ events, ...x }) => x) } : r);
+let lastLoad = 0;
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
+  const since = daysAgoIso(400);
   const [mem, ev, rs, at, nl, bd, fb, ch] = await Promise.all([
     db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on,membership_status,fee_liable,seniority_counts,phone_private,phone_work,comment)").order("last_name").order("first_name"),
-    db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
-    db.from("responses").select("event_id,member_id,status,entered_by"),
-    db.from("attendance").select("event_id,member_id,present"),
+    db.from("events").select("*").gte("event_date", since).order("event_date").order("start_time", { nullsFirst: false }),
+    fetchAll(() => db.from("responses").select("event_id,member_id,status,entered_by,events!inner(event_date)")
+      .gte("events.event_date", since).order("event_id").order("member_id")).then(stripJoin),
+    fetchAll(() => db.from("attendance").select("event_id,member_id,present,events!inner(event_date)")
+      .gte("events.event_date", since).order("event_id").order("member_id")).then(stripJoin),
     db.from("newsletters").select("*"),
     db.rpc("birthday_list"),
     db.from("fibel_chapters").select("*"),
@@ -105,7 +122,19 @@ async function loadAll() {
   state.events = ev.data;
   state.responses = rs.data;
   state.me = state.members.find(m => m.user_id === uid) || null;
+  lastLoad = Date.now();
 }
+// Kommt die App aus dem Hintergrund zurück (z. B. am nächsten Tag), Daten neu laden –
+// aber nicht, während gerade ein Formular ausgefüllt wird.
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !state.me || Date.now() - lastLoad < 60e3) return;
+  if (document.querySelector("#view form, #view textarea")) return;
+  try {
+    await loadAll();
+    if (!state.me) { await db.auth.signOut(); return renderLogin("Dein Zugang ist nicht mehr aktiv. Bitte wende dich an den Schriftführer."); }
+    render();
+  } catch (e) { console.error(e); }
+});
 
 /* ---------- Mitglied ---------- */
 function renderMember() {
@@ -413,7 +442,8 @@ function accessBox(m) {
   const a = state.access;
   if (!a || a.memberId !== m.id) return "";
   const msg = accessMessage(a);
-  const phone = (priv(m).phone || "").replace(/[^\d]/g, "");
+  // WhatsApp braucht die internationale Form ohne „+“: 0664 … → 43664 …
+  const phone = (priv(m).phone || "").replace(/[^\d+]/g, "").replace(/^00/, "").replace(/^\+/, "").replace(/^0/, "43");
   return `<tr><td colspan="2"><div class="access">
     <p><b>Zugangscode für ${esc(a.first_name)}:</b> <span class="code">${esc(a.code)}</span></p>
     <p class="fn">Der Code wird nur jetzt angezeigt. Ein neuer Code macht den alten ungültig.</p>
@@ -504,6 +534,12 @@ async function saveMember() {
   };
   const old = isNew ? null : state.allMembers.find(x => x.id === state.edit);
   const oldEmail = old ? priv(old).email : null;
+  // Sich selbst nicht aussperren: der letzte aktive Admin behält Admin- und Aktiv-Häkchen
+  if (old && old.id === state.me.id && (!memberRow.is_admin || !memberRow.active)
+      && !state.members.some(m => m.is_admin && m.id !== old.id)) {
+    $("#e-submit").disabled = false;
+    return toast("Du bist der einzige aktive Admin. Mach zuerst jemand anderen zum Admin.");
+  }
   let id = state.edit;
   if (isNew) {
     const r = await db.from("members").insert(memberRow).select("id").single();
@@ -514,7 +550,11 @@ async function saveMember() {
     if (r.error) return saveFailed(r.error);
   }
   const r2 = await db.from("member_private").upsert({ member_id: id, ...privRow });
-  if (r2.error) return saveFailed(r2.error);
+  if (r2.error) {
+    // Neues Mitglied ohne Detaildaten wieder entfernen, sonst entsteht beim nächsten Versuch ein Duplikat
+    if (isNew) await db.from("members").delete().eq("id", id);
+    return saveFailed(r2.error);
+  }
   if (old?.user_id && email && email !== oldEmail) {
     const { error } = await db.functions.invoke("zugang", { body: { member_id: id, action: "email" } });
     if (error) toast("Gespeichert, aber die Anmelde-E-Mail konnte nicht geändert werden. Erzeuge einen neuen Zugangscode.");
@@ -563,7 +603,9 @@ function renderNew(e = null) {
 function exportCsv(e) {
   const t = tally(e);
   const att = m => { const p = presentOf(e, m.id); return p === true ? "anwesend" : p === false ? "nicht anwesend" : ""; };
-  const line = (m, s) => [fullName(m), m.rank || "", m.role_title || "", priv(m).rifle_number || "", priv(m).phone || "", s, att(m)].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
+  // Werte, die mit = + - @ beginnen, würde Excel als Formel deuten (z. B. „+43 664 …“) – mit Tab davor bleiben sie Text
+  const cell = v => { const s = String(v); return `"${(/^[=+\-@]/.test(s) ? "\t" + s : s).replace(/"/g, '""')}"`; };
+  const line = (m, s) => [fullName(m), m.rank || "", m.role_title || "", priv(m).rifle_number || "", priv(m).phone || "", s, att(m)].map(cell).join(";");
   const csv = "\uFEFFName;Rang;Funktion;Gewehrnummer;Telefon;Rückmeldung;Anwesenheit\r\n" +
     [...t.yes.map(m => line(m, "zugesagt")), ...t.no.map(m => line(m, "abgesagt")), ...t.open.map(m => line(m, "offen"))].join("\r\n");
   download(`Rueckmeldungen_${e.event_date}_${e.title.replace(/[^\wäöüÄÖÜß-]+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
@@ -662,6 +704,7 @@ document.addEventListener("click", async ev => {
     if (error) return fail(error, "Der Termin konnte nicht gelöscht werden.");
     state.events = state.events.filter(e => e.id !== id);
     state.responses = state.responses.filter(r => r.event_id !== id);
+    state.attendance = state.attendance.filter(a => a.event_id !== id);
     state.openEvent = null; state.confirmDelete = false; render(); toast("Termin gelöscht."); return;
   }
 });
