@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Speckbacher</title>
+<meta name="description" content="App der Speckbacher Schützenkompanie Hall in Tirol: Ausrückungen und Rückmeldungen">
+<meta name="theme-color" content="#2f4a36">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Speckbacher">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div><h1>Speckbacher</h1><small>Schützenkompanie Hall in Tirol</small></div>
+      <button class="btn ghost" id="logout" hidden>Abmelden</button>
+    </div>
+    <div class="seg" role="group" aria-label="Ansicht" id="roles" hidden>
+      <button id="role-member" aria-pressed="true">Mitglied</button>
+      <button id="role-admin" aria-pressed="false">Admin</button>
+    </div>
+  </header>
+  <main id="view"><p class="empty">Wird geladen …</p></main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
