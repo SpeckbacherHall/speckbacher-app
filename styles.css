@@ -100,3 +100,9 @@ a.btn{text-decoration:none;display:inline-block}
 .checks{display:flex;flex-direction:column;gap:8px}
 form.panel label.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}
 form.panel label.check input{width:18px;height:18px;accent-color:var(--loden)}
+.t-vorstand{background:var(--line);color:var(--ink)}
+.minis{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.mini{border:1px solid var(--line);background:var(--surface);color:var(--muted);font:600 12px var(--body);padding:3px 9px;border-radius:7px;cursor:pointer}
+.mini.yes{color:var(--good);border-color:var(--good)}
+.mini.no{color:var(--red);border-color:var(--red)}
+.mini:disabled{opacity:.5}

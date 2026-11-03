@@ -8,11 +8,11 @@ const db = createClient(cfg.supabaseUrl, cfg.supabaseKey, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
-const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonstig: "Sonstige Aktivität" };
+const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonstig: "Sonstige Aktivität", vorstand: "Vorstandstermin" };
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", access: null, edit: null, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -25,7 +25,7 @@ const monthYear = d => dt(d).toLocaleDateString("de-AT", { month: "long", year: 
 const longDate = d => dt(d).toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const hm = t => (t || "").slice(0, 5);
 const todayIso = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Vienna" });
-const canDecline = e => e.kind === "kompanie";
+const canDecline = e => e.kind === "kompanie" || e.kind === "vorstand";
 const fullName = m => `${m.first_name} ${m.last_name}`;
 const priv = m => (Array.isArray(m.member_private) ? m.member_private[0] : m.member_private) || {};
 const myResp = id => state.responses.find(r => r.event_id === id && r.member_id === state.me.id)?.status;
@@ -78,9 +78,9 @@ async function login(email, code) {
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const [mem, ev, rs] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,active,member_private(phone,rifle_number,email,needs_post,address,birthday)").order("last_name").order("first_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,member_private(phone,rifle_number,email,needs_post,address,birthday)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", todayIso()).order("event_date").order("start_time"),
-    db.from("responses").select("event_id,member_id,status")
+    db.from("responses").select("event_id,member_id,status,entered_by")
   ]);
   if (mem.error || ev.error || rs.error) throw (mem.error || ev.error || rs.error);
   state.allMembers = mem.data;
@@ -158,24 +158,41 @@ function icsFor(e) {
 function tally(e) {
   const rs = state.responses.filter(r => r.event_id === e.id);
   const st = id => rs.find(r => r.member_id === id)?.status;
+  const who = e.kind === "vorstand" ? state.members.filter(m => m.is_board) : state.members;
   return {
-    yes: state.members.filter(m => st(m.id) === "yes"),
-    no: state.members.filter(m => st(m.id) === "no"),
-    open: state.members.filter(m => !st(m.id))
+    yes: who.filter(m => st(m.id) === "yes"),
+    no: who.filter(m => st(m.id) === "no"),
+    open: who.filter(m => !st(m.id))
   };
 }
 function bar(t, showNo = true) {
-  const n = state.members.length || 1, w = x => (x / n * 100).toFixed(1) + "%";
+  const n = (t.yes.length + t.no.length + t.open.length) || 1, w = x => (x / n * 100).toFixed(1) + "%";
   return `<div class="bar" aria-hidden="true"><i style="width:${w(t.yes.length)};background:var(--good)"></i>${showNo ? `<i style="width:${w(t.no.length)};background:var(--red)"></i>` : ""}</div>
   <div class="counts"><span><i class="dot" style="background:var(--good)"></i><b>${t.yes.length}</b> zugesagt</span>${showNo ? `<span><i class="dot" style="background:var(--red)"></i><b>${t.no.length}</b> abgesagt</span>` : ""}<span><i class="dot" style="background:var(--line)"></i><b>${t.open.length}</b> offen</span></div>`;
 }
-function rows(list, empty) {
+function rows(list, empty, e, status) {
   if (!list.length) return `<p class="empty">${empty}</p>`;
   return `<table><tbody>${list.map(m => {
     const p = priv(m);
-    return `<tr><td>${esc(fullName(m))}${m.id === state.me.id ? ` <span class="fn">(du)</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${!p.email ? " · ohne App" : ""}</span></td>
+    const r = state.responses.find(x => x.event_id === e.id && x.member_id === m.id);
+    const byAdmin = r?.entered_by ? " · vom Admin eingetragen" : "";
+    // Admins tragen Rückmeldungen für Mitglieder ohne App ein (oder korrigieren sie)
+    const act = status === "open"
+      ? `<button class="mini yes" data-set="${m.id}" data-status="yes">Zusage</button>${canDecline(e) ? `<button class="mini no" data-set="${m.id}" data-status="no">Absage</button>` : ""}`
+      : `<button class="mini" data-set="${m.id}" data-status="">zurücksetzen</button>`;
+    return `<tr><td>${esc(fullName(m))}${m.id === state.me.id ? ` <span class="fn">(du)</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${!m.user_id ? " · ohne App" : ""}${byAdmin}</span><div class="minis">${act}</div></td>
       <td class="gw">${p.rifle_number ? "Nr. " + esc(p.rifle_number) : "–"}</td></tr>`;
   }).join("")}</tbody></table>`;
+}
+async function setRespFor(eventId, memberId, status) {
+  const q = status
+    ? db.from("responses").upsert({ event_id: eventId, member_id: memberId, status }).select("event_id,member_id,status,entered_by").single()
+    : db.from("responses").delete().eq("event_id", eventId).eq("member_id", memberId);
+  const { data, error } = await q;
+  if (error) return fail(error, "Die Rückmeldung konnte nicht gespeichert werden.");
+  state.responses = state.responses.filter(r => !(r.event_id === eventId && r.member_id === memberId));
+  if (status) state.responses.push(data);
+  render();
 }
 function renderAdmin() {
   let html = `<div class="seg sm" role="group" aria-label="Admin-Bereich">
@@ -186,6 +203,7 @@ function renderAdmin() {
   if (state.adminTab === "neu") return html + renderNew();
   if (state.openEvent) {
     const e = state.events.find(x => x.id === state.openEvent);
+    if (e && state.editEvent) return html + renderNew(e);
     if (e) {
       const t = tally(e);
       return html + `<button class="back" id="back">‹ Alle Termine</button>
@@ -195,14 +213,15 @@ function renderAdmin() {
         <p class="meta"><span>${longDate(e.event_date)} · ${timesLine(e)}</span><span>${esc(e.place)}${e.dress ? " · " + esc(e.dress) : ""}</span></p>
         ${bar(t, canDecline(e))}
         <div class="row-actions">
+          <button class="btn" id="event-edit">Bearbeiten</button>
           <button class="btn" id="export">Liste als CSV</button>
           ${state.confirmDelete
             ? `<span class="fn">Termin wirklich löschen?</span><button class="btn danger" id="delete-yes">Ja, löschen</button><button class="btn ghost" id="delete-no">Abbrechen</button>`
             : `<button class="btn danger" id="delete">Termin löschen</button>`}
         </div>
-        <div class="sec"><h4>Zugesagt <span>${t.yes.length}</span></h4>${rows(t.yes, "Noch keine Zusagen.")}</div>
-        ${canDecline(e) ? `<div class="sec"><h4>Abgesagt <span>${t.no.length}</span></h4>${rows(t.no, "Keine Absagen.")}</div>` : ""}
-        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>${rows(t.open, "Alle haben geantwortet.")}</div>
+        <div class="sec"><h4>Zugesagt <span>${t.yes.length}</span></h4>${rows(t.yes, "Noch keine Zusagen.", e, "yes")}</div>
+        ${canDecline(e) ? `<div class="sec"><h4>Abgesagt <span>${t.no.length}</span></h4>${rows(t.no, "Keine Absagen.", e, "no")}</div>` : ""}
+        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>${rows(t.open, "Alle haben geantwortet.", e, "open")}</div>
       </div>`;
     }
     state.openEvent = null;
@@ -283,6 +302,7 @@ function renderEdit() {
     <div class="checks">
       ${check("e-post", "Rundschreiben per Post", p.needs_post)}
       ${check("e-active", "Aktiv (kann sich anmelden)", m.active)}
+      ${check("e-board", "Vorstand (sieht Vorstandstermine)", m.is_board)}
       ${check("e-admin", "Admin", m.is_admin)}
     </div>
     ${!isNew && m.user_id ? `<p class="rule">Eine geänderte E-Mail-Adresse gilt sofort auch für die Anmeldung. Der Zugangscode bleibt gleich.</p>` : ""}
@@ -295,7 +315,7 @@ async function saveMember() {
   const email = val("#e-email")?.toLowerCase() || null;
   const memberRow = {
     first_name: val("#e-first"), last_name: val("#e-last"), rank: val("#e-rank"), role_title: val("#e-role"),
-    active: $("#e-active").checked, is_admin: $("#e-admin").checked
+    active: $("#e-active").checked, is_board: $("#e-board").checked, is_admin: $("#e-admin").checked
   };
   const privRow = {
     email, phone: val("#e-phone"), rifle_number: val("#e-rifle"), address: val("#e-address"),
@@ -335,22 +355,26 @@ function renderPhone() {
   <input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
   <div class="panel" id="phone-list">${phoneRows(phoneList())}</div>`;
 }
-function renderNew() {
-  return `<form class="panel" id="new-form">
-    <h2>Neuen Termin anlegen</h2>
-    <label for="f-kind">Art<select id="f-kind">${Object.entries(TYPES).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
-    <label for="f-title">Bezeichnung<input id="f-title" required placeholder="z. B. Herz-Jesu-Prozession"></label>
+function renderNew(e = null) {
+  const v = k => esc(e?.[k] ?? "");
+  const t = k => esc(hm(e?.[k]));
+  return `${e ? `<button class="back" id="event-edit-cancel" type="button">‹ Zurück zum Termin</button>` : ""}
+  <form class="panel" id="new-form">
+    <h2>${e ? "Termin bearbeiten" : "Neuen Termin anlegen"}</h2>
+    <label for="f-kind">Art<select id="f-kind">${Object.entries(TYPES).map(([k, l]) => `<option value="${k}" ${e?.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <p class="rule">Vorstandstermine sehen nur Mitglieder mit dem Häkchen „Vorstand“.</p>
+    <label for="f-title">Bezeichnung<input id="f-title" required placeholder="z. B. Herz-Jesu-Prozession" value="${v("title")}"></label>
     <div class="grid2">
-      <label for="f-date">Datum<input id="f-date" type="date" required min="${todayIso()}"></label>
-      <label for="f-time">Beginn<input id="f-time" type="time" required></label>
+      <label for="f-date">Datum<input id="f-date" type="date" required ${e ? "" : `min="${todayIso()}"`} value="${v("event_date")}"></label>
+      <label for="f-time">Beginn<input id="f-time" type="time" required value="${t("start_time")}"></label>
     </div>
     <div class="grid2">
-      <label for="f-muster">Antreten (optional)<input id="f-muster" type="time"></label>
-      <label for="f-dress">Adjustierung<input id="f-dress" placeholder="z. B. Tracht mit Gewehr"></label>
+      <label for="f-muster">Antreten (optional)<input id="f-muster" type="time" value="${t("muster_time")}"></label>
+      <label for="f-dress">Adjustierung<input id="f-dress" placeholder="z. B. Tracht mit Gewehr" value="${v("dress")}"></label>
     </div>
-    <label for="f-place">Ort<input id="f-place" required placeholder="z. B. Pfarrkirche St. Nikolaus"></label>
-    <label for="f-notes">Hinweis (optional)<input id="f-notes"></label>
-    <button class="btn yes" type="submit" id="f-submit">Termin veröffentlichen</button>
+    <label for="f-place">Ort<input id="f-place" required placeholder="z. B. Pfarrkirche St. Nikolaus" value="${v("place")}"></label>
+    <label for="f-notes">Hinweis (optional)<input id="f-notes" value="${v("notes")}"></label>
+    <button class="btn yes" type="submit" id="f-submit">${e ? "Änderungen speichern" : "Termin veröffentlichen"}</button>
   </form>`;
 }
 function exportCsv(e) {
@@ -388,8 +412,8 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; render(); return; }
-  if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; render(); scrollTo(0, 0); return; }
+  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; render(); return; }
+  if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
   if (d.edit) { state.edit = d.edit; state.access = null; render(); scrollTo(0, 0); return; }
@@ -401,6 +425,9 @@ document.addEventListener("click", async ev => {
     catch (e) { const r = document.createRange(); r.selectNodeContents($("#access-msg")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Text markiert – jetzt kopieren."); }
     return;
   }
+  if (t.id === "event-edit") { state.editEvent = true; render(); scrollTo(0, 0); return; }
+  if (t.id === "event-edit-cancel") { state.editEvent = false; render(); return; }
+  if (d.set !== undefined && d.status !== undefined) { t.disabled = true; return setRespFor(state.openEvent, d.set, d.status || null); }
   if (t.id === "export") { exportCsv(state.events.find(x => x.id === state.openEvent)); return; }
   if (t.id === "delete") { state.confirmDelete = true; render(); return; }
   if (t.id === "delete-no") { state.confirmDelete = false; render(); return; }
@@ -419,23 +446,29 @@ document.addEventListener("input", ev => {
 document.addEventListener("submit", async ev => {
   ev.preventDefault();
   if (ev.target.id === "login-form") {
-    const btn = ev.target.querySelector("button"); btn.disabled = true; btn.textContent = "Wird verschickt …";
+    const btn = ev.target.querySelector("button"); btn.disabled = true; btn.textContent = "Anmelden …";
     return login($("#login-email").value, $("#login-code").value);
   }
   if (ev.target.id === "edit-form") { $("#e-submit").disabled = true; return saveMember(); }
   if (ev.target.id === "new-form") {
     $("#f-submit").disabled = true;
+    const editing = state.editEvent ? state.openEvent : null;
     const row = {
       kind: $("#f-kind").value, title: $("#f-title").value.trim(), event_date: $("#f-date").value,
       start_time: $("#f-time").value, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
-      dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null, created_by: state.me.id
+      dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null
     };
-    const { data, error } = await db.from("events").insert(row).select().single();
+    if (!editing) row.created_by = state.me.id;
+    const { data, error } = editing
+      ? await db.from("events").update(row).eq("id", editing).select().single()
+      : await db.from("events").insert(row).select().single();
     if (error) { $("#f-submit").disabled = false; return fail(error, "Der Termin konnte nicht gespeichert werden."); }
-    state.events.push(data);
+    state.events = state.events.filter(x => x.id !== data.id);
+    state.editEvent = false;
+    if (data.event_date >= todayIso()) state.events.push(data);
     state.events.sort((a, b) => (a.event_date + a.start_time).localeCompare(b.event_date + b.start_time));
     state.adminTab = "rueck"; state.openEvent = data.id; render(); scrollTo(0, 0);
-    toast("Termin veröffentlicht.");
+    toast(editing ? "Änderungen gespeichert." : "Termin veröffentlicht.");
   }
 });
 

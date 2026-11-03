@@ -20,7 +20,9 @@ Es gibt keinen Build-Schritt: Die Dateien im Repository sind genau das, was onli
 - Anmelden kann sich nur, wer aktiv ist und von einem Admin einen Zugangscode bekommen hat. Es gibt keine Selbstregistrierung und keinen automatischen Mailversand.
 - Mitglieder sehen alle Termine und die Namensliste, sagen für sich selbst zu oder ab und sehen nur ihre eigenen vertraulichen Daten.
 - Admins sehen alle Rückmeldungen, Gewehrnummern und Telefonnummern und legen Termine an.
-- Absagen sind nur bei Kompanieausrückungen möglich; bei Fahnenabordnungen und sonstigen Aktivitäten gibt es nur Zusagen.
+- Absagen sind bei Kompanieausrückungen und Vorstandsterminen möglich; bei Fahnenabordnungen und sonstigen Aktivitäten gibt es nur Zusagen.
+- Vorstandstermine sehen nur Mitglieder mit dem Häkchen „Vorstand“ sowie Admins.
+- Admins können für jedes Mitglied eine Rückmeldung eintragen oder zurücksetzen (z. B. für Mitglieder ohne App); solche Einträge sind als „vom Admin eingetragen“ markiert.
 
 Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in `config.js` ist öffentlich und gibt ohne Anmeldung keinerlei Daten frei.
 
@@ -30,7 +32,11 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 **Zugang vergeben:** In der App unter Admin → Mitglieder bei der Person auf „Zugang erzeugen“ tippen. Die fertige Nachricht mit Adresse, E-Mail und Code kopieren oder per WhatsApp schicken. „Neuer Code“ ersetzt einen verlorenen Code.
 
-**Admin oder Sperre:** In der Mitgliederbearbeitung „Admin“ bzw. „Aktiv“ an- oder abhaken.
+**Termin ändern:** Admin → Rückmeldungen → Termin öffnen → „Bearbeiten“.
+
+**Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
+
+**Admin, Vorstand oder Sperre:** In der Mitgliederbearbeitung „Admin“, „Vorstand“ bzw. „Aktiv“ an- oder abhaken.
 
 **Änderung an der App veröffentlichen:** Änderung in den `main`-Branch committen; GitHub Pages aktualisiert die Seite nach ein bis zwei Minuten.
 
