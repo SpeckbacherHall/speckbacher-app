@@ -10,7 +10,11 @@ self.addEventListener("push", (event) => {
     icon: "icon-192.png",
     badge: "icon-192.png",
     data: { url: data.url || "./" },
-    lang: "de"
+    lang: "de",
+    tag: data.tag || ("speckbacher-" + Date.now()),
+    renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200]
   }));
 });
 
@@ -19,7 +23,12 @@ self.addEventListener("notificationclick", (event) => {
   const url = new URL(event.notification.data?.url || "./", self.registration.scope).href;
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    for (const c of all) { if (c.url.startsWith(self.registration.scope)) { await c.focus(); return; } }
+    for (const c of all) {
+      if (c.url.startsWith(self.registration.scope)) {
+        if ("navigate" in c) { try { await c.navigate(url); } catch (e) { /* ignoriert */ } }
+        await c.focus(); return;
+      }
+    }
     await self.clients.openWindow(url);
   })());
 });

@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", newsletters: [], letterId: null, nlEdit: false, nlDraft: null, settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -84,14 +84,16 @@ async function login(email, code) {
 /* ---------- Daten ---------- */
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
-  const [mem, ev, rs, at] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token)").order("last_name").order("first_name"),
+  const [mem, ev, rs, at, nl] = await Promise.all([
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
-    db.from("attendance").select("event_id,member_id,present")
+    db.from("attendance").select("event_id,member_id,present"),
+    db.from("newsletters").select("*")
   ]);
   if (mem.error || ev.error || rs.error || at.error) throw (mem.error || ev.error || rs.error || at.error);
   state.attendance = at.data;
+  state.newsletters = nl.error ? [] : nl.data;
   state.allMembers = mem.data;
   state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
@@ -105,8 +107,10 @@ function renderMember() {
   if (state.filter === "offen") list = list.filter(e => !myResp(e.id));
   if (state.filter === "zu") list = list.filter(e => myResp(e.id) === "yes");
   const open = upcoming().filter(e => !myResp(e.id)).length;
+  if (state.letterId) return renderLetterView();
   if (state.settings) return renderSettings();
   let html = `<div class="settings-link"><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
     ${[["alle", "Alle"], ["offen", "Offen"], ["zu", "Zugesagt"]].map(([k, l]) => `<button class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
@@ -326,9 +330,11 @@ async function setAttendance(e, memberIds, present) {
 }
 function renderAdmin() {
   let html = `<div class="seg sm" role="group" aria-label="Admin-Bereich">
-    <button data-atab="rueck" aria-pressed="${state.adminTab === "rueck"}">Rückmeldungen</button>
+    <button data-atab="rueck" aria-pressed="${state.adminTab === "rueck"}">Termine</button>
     <button data-atab="tel" aria-pressed="${state.adminTab === "tel"}">Mitglieder</button>
-    <button data-atab="neu" aria-pressed="${state.adminTab === "neu"}">Neuer Termin</button></div>`;
+    <button data-atab="rs" aria-pressed="${state.adminTab === "rs"}">Rundschreiben</button>
+    <button data-atab="neu" aria-pressed="${state.adminTab === "neu"}" aria-label="Neuer Termin">+ Termin</button></div>`;
+  if (state.adminTab === "rs") return html + renderNewsletters();
   if (state.adminTab === "tel") return html + renderPhone();
   if (state.adminTab === "neu") return html + renderNew();
   if (state.openEvent) {
@@ -440,6 +446,7 @@ function renderEdit() {
     <h2>${isNew ? "Neues Mitglied" : esc(fullName(m))}</h2>
     <div class="grid2">${field("e-first", "Vorname", m.first_name, "text", "required")}${field("e-last", "Nachname", m.last_name, "text", "required")}</div>
     <div class="grid2">${field("e-rank", "Rang", m.rank)}${field("e-role", "Funktion", m.role_title)}</div>
+    <label for="e-gender">Anrede<select id="e-gender"><option value="m" ${m.gender !== "w" ? "selected" : ""}>Herr (Lieber …)</option><option value="w" ${m.gender === "w" ? "selected" : ""}>Frau (Liebe …)</option></select></label>
     ${field("e-email", "E-Mail (für die Anmeldung)", p.email, "email", 'autocomplete="off"')}
     <div class="grid2">${field("e-phone", "Telefon", p.phone, "tel")}${field("e-rifle", "Gewehrnummer", p.rifle_number)}</div>
     ${field("e-address", "Adresse", p.address)}
@@ -459,7 +466,7 @@ async function saveMember() {
   const val = id => $(id).value.trim() || null;
   const email = val("#e-email")?.toLowerCase() || null;
   const memberRow = {
-    first_name: val("#e-first"), last_name: val("#e-last"), rank: val("#e-rank"), role_title: val("#e-role"),
+    first_name: val("#e-first"), last_name: val("#e-last"), gender: $("#e-gender").value, rank: val("#e-rank"), role_title: val("#e-role"),
     active: $("#e-active").checked, is_board: $("#e-board").checked, is_admin: $("#e-admin").checked
   };
   const privRow = {
@@ -549,7 +556,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
@@ -558,7 +565,7 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; render(); return; }
+  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
@@ -665,8 +672,10 @@ async function boot() {
   }
   try { const r = localStorage.getItem("sp-role"); if (r === "admin" || r === "member") state.role = r; } catch (e) {}
   render();
+  openFromHash();
 }
-db.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && !state.me) start(); });
-start();
+// Erst starten, wenn alle Skripte (auch rundschreiben.js) geladen sind
+db.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && !state.me && document.readyState !== "loading") start(); });
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.error("Service Worker", e));

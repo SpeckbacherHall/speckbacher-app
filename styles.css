@@ -114,3 +114,4 @@ tr.is-present td:first-child{color:var(--good)}
 tr.is-absent td:first-child{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--red)}
 .settings-link{display:flex;justify-content:flex-end;margin-bottom:6px}
 .settings-link .btn{font-size:13px;padding:6px 12px}
+.seg.sm button{padding:6px 2px}

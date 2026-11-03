@@ -12,6 +12,7 @@ Pilotversion, Stand November 2026.
 | Datenbank, Login | Supabase-Projekt `speckbacher-app` (Region Frankfurt) | Mitglieder, Termine, Rückmeldungen, Anmeldung mit E-Mail und Zugangscode |
 | Zugangscodes | `supabase/functions/zugang` (Supabase Edge Function) | Admin erzeugt pro Mitglied einen Code |
 | Kalender-Abo | `supabase/functions/kalender` | Persönlicher Abo-Link mit allen zugesagten Terminen |
+| Rundschreiben | `rundschreiben.js`, `letter.css`, Tabelle `newsletters` | Monatsbrief nach Briefvorlage, Veröffentlichung mit Push, Serienbrief |
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
 
@@ -39,6 +40,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 **Anwesenheit erfassen:** Termin öffnen → „Anwesenheit“ (am Termintag und danach öffnet sich diese Ansicht automatisch). „Alle Zugesagten als ‚da‘“ setzen, dann einzelne Personen korrigieren und zum Schluss „Übrige als ‚nicht da‘“. Vergangene Termine der letzten zwölf Monate findest du unter Rückmeldungen → „Vergangene“. Der CSV-Export enthält die Anwesenheit.
 
 **Erinnerungen und Kalender (Mitglieder):** Oben bei den Ausrückungen „Erinnerungen & Kalender“. Am iPhone funktionieren Erinnerungen nur, wenn die App über „Zum Home-Bildschirm“ installiert ist. Die Push-Schlüssel und das Kennwort des Zeitplans liegen im Supabase Vault (`vapid_public`, `vapid_private`, `cron_secret`).
+
+**Rundschreiben:** Admin → Rundschreiben → „Neues Rundschreiben“. Monat wählen (die Termine des Monats sind vorausgewählt), optional Vorschau-Termine des Folgemonats anhaken, freien Text unten ergänzen, speichern. „In der App veröffentlichen“ zeigt es allen Mitgliedern und schickt eine Push-Nachricht. Der Serienbrief für die Post („Postversand“ bzw. „Alle ohne App“) öffnet den Druckdialog, dort „Als PDF sichern“ oder drucken – am besten am Computer mit Chrome oder Edge. Absender, Fußzeile und Standardtexte stehen oben in `rundschreiben.js` (`LETTER`).
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
 

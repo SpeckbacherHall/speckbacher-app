@@ -2,6 +2,7 @@
 // - Zeitplan (pg_cron, Header x-cron-secret): täglich um 18 Uhr Wiener Zeit Erinnerung an alle,
 //   die für einen Termin am nächsten Tag zugesagt haben. Jede Erinnerung geht nur einmal raus.
 // - Test (angemeldetes Mitglied, Body {"mode":"test"}): Probe-Nachricht an die eigenen Geräte.
+// - Rundschreiben (Admin, Body {"mode":"broadcast","title","body","url"}): Nachricht an alle aktiven Mitglieder.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -35,7 +36,7 @@ Deno.serve(async (req) => {
     const reached = new Set<string>();
     for (const s of subs ?? []) {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 6 * 3600 });
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 6 * 3600, urgency: "high" });
         reached.add(s.member_id);
       } catch (err) {
         // deno-lint-ignore no-explicit-any
@@ -47,7 +48,7 @@ Deno.serve(async (req) => {
     return reached;
   }
 
-  let body: { mode?: string; force?: boolean } = {};
+  let body: { mode?: string; force?: boolean; title?: string; body?: string; url?: string } = {};
   try { body = await req.json(); } catch { /* leer erlaubt */ }
 
   // --- Test durch ein angemeldetes Mitglied ---
@@ -58,6 +59,19 @@ Deno.serve(async (req) => {
     const { data: me } = await db.from("members").select("id").eq("user_id", u.user.id).eq("active", true).maybeSingle();
     if (!me) return json({ error: "Kein aktives Mitglied." }, 403);
     const reached = await sendTo([me.id], { title: "Speckbacher", body: "So sehen die Erinnerungen aus. Alles eingerichtet!", url: "./" });
+    return json({ sent: reached.size });
+  }
+
+  // --- Nachricht an alle (nur Admins) ---
+  if (body.mode === "broadcast") {
+    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+    const { data: u } = await db.auth.getUser(token);
+    if (!u?.user) return json({ error: "Nicht angemeldet." }, 401);
+    const { data: me } = await db.from("members").select("id,is_admin").eq("user_id", u.user.id).eq("active", true).maybeSingle();
+    if (!me?.is_admin) return json({ error: "Nur Admins dürfen an alle senden." }, 403);
+    if (!body.title) return json({ error: "Titel fehlt." }, 400);
+    const { data: all } = await db.from("members").select("id").eq("active", true);
+    const reached = await sendTo((all ?? []).map((m) => m.id), { title: body.title.slice(0, 80), body: (body.body ?? "").slice(0, 200), url: body.url ?? "./" });
     return json({ sent: reached.size });
   }
 

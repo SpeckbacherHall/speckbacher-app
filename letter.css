@@ -1,0 +1,56 @@
+/* Rundschreiben nach der Briefvorlage ab 2027 (Segoe UI, Logo oben mittig, Fußzeile in drei Spalten).
+   Am Bildschirm als Karte, im Druck als A4-Seite je Brief. */
+.letter{--l-ink:#1d1d1b; --l-muted:#4a4a48; color:var(--l-ink); background:#fff;
+  font-family:"Segoe UI","Karla",system-ui,-apple-system,sans-serif; font-size:10.5pt; line-height:1.38}
+.letter p{margin:0 0 .7em}
+.letter .l-head{text-align:center}
+.letter .l-head img{height:34mm; width:auto}
+.letter .l-sender{font-size:7.5pt; margin-bottom:3mm}
+.letter .l-addr{margin-bottom:6mm}
+.letter .l-date{text-align:right; margin:4mm 0 6mm}
+.letter .l-title{font-weight:400; font-size:18pt; letter-spacing:.01em; margin:0 0 6mm; line-height:1.1}
+.letter .l-title b{font-family:"Segoe UI Black","Segoe UI","Karla",sans-serif; font-weight:900}
+.letter .l-sub{font-weight:400; font-size:13pt; margin:5mm 0 3mm}
+.letter .l-item{margin:0 0 3.5mm; break-inside:avoid}
+.letter .l-item h3{font-family:"Segoe UI Semibold","Segoe UI","Karla",sans-serif; font-weight:700; font-size:10.5pt; margin:0; letter-spacing:.02em}
+.letter .l-item p{margin:0}
+.letter .l-free{margin-top:5mm}
+.letter .l-greet{margin-top:6mm}
+.letter .l-sign{margin-top:8mm}
+.l-foot{display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:4mm; font-size:6.8pt; line-height:1.35; color:var(--l-muted)}
+.l-foot b{color:var(--l-ink)}
+
+/* Bildschirm */
+.letter-screen{border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.letter-screen .letter{padding:20px 18px 16px; font-size:15px}
+.letter-screen .l-head img{height:96px}
+.letter-screen .l-sender{font-size:11px}
+.letter-screen .l-title{font-size:24px}
+.letter-screen .l-sub{font-size:18px}
+.letter-screen .l-item h3{font-size:15px}
+.letter-screen .l-foot{margin-top:20px; padding-top:12px; border-top:1px solid #ddd; font-size:10px; grid-template-columns:1fr}
+.nl-card .date .d{font-size:26px; color:var(--loden)}
+.nl-card{width:100%; text-align:left; cursor:pointer; font:inherit; color:inherit; margin-bottom:6px}
+form.panel textarea{padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:15px/1.4 var(--body); width:100%; resize:vertical}
+form.panel label.nl-ev{align-items:flex-start; padding:6px 0; border-top:1px solid var(--line)}
+form.panel label.nl-ev input{margin-top:3px; flex:none}
+.sec-title{font-family:var(--display); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin:10px 0 0}
+#print-root{display:none}
+
+/* Druck: ein Brief je Person, A4. Logo auf der ersten Seite, Fußzeile auf jeder Seite.
+   Lange Rundschreiben laufen auf eine weitere Seite; Kopf- und Fußabstand wiederholen sich über thead/tfoot. */
+@page{size:A4; margin:0}
+@media print{
+  body.print-mode{background:#fff !important; padding:0 !important; margin:0}
+  body.print-mode > *:not(#print-root){display:none !important}
+  body.print-mode #print-root{display:block}
+  #print-root .letter{padding:0 25mm; break-after:page; page-break-after:always}
+  #print-root .letter:last-child{break-after:auto; page-break-after:auto}
+  #print-root .l-table{width:100%; border-collapse:collapse}
+  #print-root .l-table td{padding:0; border:0}
+  #print-root .l-space-top{height:7mm}
+  #print-root .l-space-bottom{height:30mm}
+  #print-root .l-head{height:34mm; margin-bottom:9mm}
+  #print-root .l-foot-print{position:fixed; left:25mm; right:25mm; bottom:7mm; padding:0; font-size:6.8pt; line-height:1.35; font-family:"Segoe UI","Karla",system-ui,sans-serif; color:#4a4a48}
+  #print-root .l-foot-print b{color:#1d1d1b}
+}
