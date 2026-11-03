@@ -13,6 +13,7 @@ Pilotversion, Stand November 2026.
 | Zugangscodes | `supabase/functions/zugang` (Supabase Edge Function) | Admin erzeugt pro Mitglied einen Code |
 | Kalender-Abo | `supabase/functions/kalender` | Persönlicher Abo-Link mit allen zugesagten Terminen |
 | Rundschreiben | `rundschreiben.js`, `letter.css`, Tabelle `newsletters` | Monatsbrief nach Briefvorlage, Veröffentlichung mit Push, Serienbrief |
+| Fibel | `fibel.js`, Tabelle `fibel_chapters` | Kapitel zum Lesen, Bearbeitung durch Admins |
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
 
@@ -42,6 +43,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 **Erinnerungen und Kalender (Mitglieder):** Oben bei den Ausrückungen „Erinnerungen & Kalender“. Am iPhone funktionieren Erinnerungen nur, wenn die App über „Zum Home-Bildschirm“ installiert ist. Die Push-Schlüssel und das Kennwort des Zeitplans liegen im Supabase Vault (`vapid_public`, `vapid_private`, `cron_secret`).
 
 **Rundschreiben:** Admin → Rundschreiben → „Neues Rundschreiben“. Monat wählen (die Termine des Monats sind vorausgewählt), optional Vorschau-Termine des Folgemonats anhaken, freien Text unten ergänzen, speichern. „In der App veröffentlichen“ zeigt es allen Mitgliedern und schickt eine Push-Nachricht. Der Serienbrief für die Post („Postversand“ bzw. „Alle ohne App“) öffnet den Druckdialog, dort „Als PDF sichern“ oder drucken – am besten am Computer mit Chrome oder Edge. Absender, Fußzeile und Standardtexte stehen oben in `rundschreiben.js` (`LETTER`).
+
+**Fibel:** Mitglieder öffnen sie über „Fibel“ bei den Ausrückungen. Admins sehen dort zusätzlich „Neues Kapitel“ und „Kapitel bearbeiten“: Überschrift, Text (Leerzeile = Absatz, „## “ = Zwischenüberschrift), Reihenfolge und „Für alle veröffentlicht“. Entwürfe sehen nur Admins.
 
 **Geburtstagsliste:** Mitglieder öffnen sie über „Geburtstage“ bei den Ausrückungen (heute, nächste 30 Tage, ganzes Jahr). Sichtbar sind nur Name, Tag und Monat; das Alter und runde Geburtstage sehen nur Admins. Jedes Mitglied kann sich unter „Erinnerungen & Kalender“ ausblenden. Im Rundschreiben-Editor schlägt die App die runden Geburtstage des Monats als Glückwunsch für den freien Text vor.
 

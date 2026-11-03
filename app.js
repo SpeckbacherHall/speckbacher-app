@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", birthdays: [], showBirthdays: false, newsletters: [], letterId: null, nlEdit: false, nlDraft: null, settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", fibel: [], showFibel: false, fibelOpen: null, fibelEdit: null, birthdays: [], showBirthdays: false, newsletters: [], letterId: null, nlEdit: false, nlDraft: null, settings: false, pushState: "unbekannt", when: "kommend", detailTab: null, attendance: [], access: null, edit: null, editEvent: false, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -84,18 +84,20 @@ async function login(email, code) {
 /* ---------- Daten ---------- */
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
-  const [mem, ev, rs, at, nl, bd] = await Promise.all([
+  const [mem, ev, rs, at, nl, bd, fb] = await Promise.all([
     db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present"),
     db.from("newsletters").select("*"),
-    db.rpc("birthday_list")
+    db.rpc("birthday_list"),
+    db.from("fibel_chapters").select("*")
   ]);
   if (mem.error || ev.error || rs.error || at.error) throw (mem.error || ev.error || rs.error || at.error);
   state.attendance = at.data;
   state.newsletters = nl.error ? [] : nl.data;
   state.birthdays = bd.error ? [] : bd.data;
+  state.fibel = fb.error ? [] : fb.data;
   state.allMembers = mem.data;
   state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
@@ -111,8 +113,9 @@ function renderMember() {
   const open = upcoming().filter(e => !myResp(e.id)).length;
   if (state.letterId) return renderLetterView();
   if (state.showBirthdays) return renderBirthdays();
+  if (state.showFibel) return renderFibel();
   if (state.settings) return renderSettings();
-  let html = `<div class="settings-link"><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -564,7 +567,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
