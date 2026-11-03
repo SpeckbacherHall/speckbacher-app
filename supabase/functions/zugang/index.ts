@@ -1,5 +1,6 @@
 // Edge Function "zugang": Ein Admin erzeugt für ein Mitglied einen persönlichen Zugangscode.
 // Der Code wird als Passwort des Kontos gesetzt; ein neuer Code macht den alten ungültig.
+// Mit action "email" wird nur die Anmelde-E-Mail an die Mitgliedsdaten angeglichen.
 // Kein Mailversand: der Admin schickt E-Mail-Adresse und Code selbst an das Mitglied.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -37,8 +38,11 @@ Deno.serve(async (req) => {
   if (!me?.is_admin || !me.active) return json({ error: "Nur Admins können Zugänge erzeugen." }, 403);
 
   let memberId: string;
+  let action = "code";
   try {
-    memberId = (await req.json()).member_id;
+    const body = await req.json();
+    memberId = body.member_id;
+    if (body.action === "email") action = "email";
   } catch {
     return json({ error: "Ungültige Anfrage." }, 400);
   }
@@ -52,6 +56,14 @@ Deno.serve(async (req) => {
   const p = Array.isArray(m.member_private) ? m.member_private[0] : m.member_private;
   const email = p?.email;
   if (!email) return json({ error: "Für dieses Mitglied ist keine E-Mail-Adresse eingetragen." }, 400);
+
+  // Nur Anmelde-E-Mail angleichen, nachdem ein Admin sie in den Mitgliedsdaten geändert hat
+  if (action === "email") {
+    if (!m.user_id) return json({ ok: true });
+    const { error } = await admin.auth.admin.updateUserById(m.user_id, { email, email_confirm: true });
+    if (error) return json({ error: "Die Anmelde-E-Mail konnte nicht geändert werden." }, 500);
+    return json({ ok: true });
+  }
 
   const code = newCode();
   if (m.user_id) {

@@ -8,7 +8,7 @@ Pilotversion, Stand November 2026.
 
 | Teil | Wo | Wozu |
 |---|---|---|
-| Web-App | dieses Repository, veröffentlicht über GitHub Pages | Oberfläche (`index.html`, `app.js`, `styles.css`) |
+| Web-App | dieses Repository, veröffentlicht über GitHub Pages | Oberfläche (`index.html`, `app.js`, `styles.css`), Logo `logo.svg`, Schrift Karla in `fonts/` |
 | Datenbank, Login | Supabase-Projekt `speckbacher-app` (Region Frankfurt) | Mitglieder, Termine, Rückmeldungen, Anmeldung mit E-Mail und Zugangscode |
 | Zugangscodes | `supabase/functions/zugang` (Supabase Edge Function) | Admin erzeugt pro Mitglied einen Code |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
@@ -26,13 +26,11 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 ## Häufige Aufgaben
 
-**Mitglied anlegen oder ändern:** Im Supabase-Dashboard unter *Table Editor* → `members` (Name, Rang, Funktion, aktiv, Admin) und `member_private` (E-Mail, Telefon, Gewehrnummer, Adresse). Die E-Mail-Adresse klein schreiben.
+**Mitglied anlegen oder ändern:** In der App unter Admin → Mitglieder auf den Namen tippen (oder „Neues Mitglied“). Dort lassen sich Name, Rang, Funktion, E-Mail, Telefon, Gewehrnummer, Adresse, Geburtstag, Postversand, Aktiv und Admin ändern. Eine geänderte E-Mail gilt sofort auch für die Anmeldung.
 
 **Zugang vergeben:** In der App unter Admin → Mitglieder bei der Person auf „Zugang erzeugen“ tippen. Die fertige Nachricht mit Adresse, E-Mail und Code kopieren oder per WhatsApp schicken. „Neuer Code“ ersetzt einen verlorenen Code.
 
-**Jemanden zum Admin machen:** In `members` das Feld `is_admin` auf `true` setzen.
-
-**Mitglied sperren:** In `members` das Feld `active` auf `false` setzen.
+**Admin oder Sperre:** In der Mitgliederbearbeitung „Admin“ bzw. „Aktiv“ an- oder abhaken.
 
 **Änderung an der App veröffentlichen:** Änderung in den `main`-Branch committen; GitHub Pages aktualisiert die Seite nach ein bis zwei Minuten.
 

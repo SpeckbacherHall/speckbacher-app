@@ -12,7 +12,7 @@ const TYPES = { kompanie: "Kompanieausrückung", fahne: "Fahnenabordnung", sonst
 
 const state = {
   me: null, events: [], responses: [], members: [],
-  role: "member", filter: "alle", access: null, adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
+  role: "member", filter: "alle", access: null, edit: null, allMembers: [], adminTab: "rueck", openEvent: null, phoneQuery: "", confirmDelete: false
 };
 
 /* ---------- Hilfen ---------- */
@@ -78,12 +78,13 @@ async function login(email, code) {
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const [mem, ev, rs] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,active,member_private(phone,rifle_number,email,needs_post)").eq("active", true).order("last_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,active,member_private(phone,rifle_number,email,needs_post,address,birthday)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", todayIso()).order("event_date").order("start_time"),
     db.from("responses").select("event_id,member_id,status")
   ]);
   if (mem.error || ev.error || rs.error) throw (mem.error || ev.error || rs.error);
-  state.members = mem.data;
+  state.allMembers = mem.data;
+  state.members = mem.data.filter(m => m.active);
   state.events = ev.data;
   state.responses = rs.data;
   state.me = state.members.find(m => m.user_id === uid) || null;
@@ -217,7 +218,7 @@ function renderAdmin() {
 }
 function phoneList() {
   const q = state.phoneQuery.toLowerCase();
-  return state.members.filter(m => `${fullName(m)} ${m.rank || ""} ${m.role_title || ""}`.toLowerCase().includes(q));
+  return state.allMembers.filter(m => `${fullName(m)} ${m.rank || ""} ${m.role_title || ""}`.toLowerCase().includes(q));
 }
 function accessMessage(a) {
   const url = location.origin + location.pathname;
@@ -241,9 +242,9 @@ function phoneRows(list) {
   if (!list.length) return `<p class="empty">Kein Mitglied gefunden.</p>`;
   return `<table><tbody>${list.map(m => {
     const p = priv(m);
-    const access = !p.email ? `<span class="fn">keine E-Mail</span>`
+    const access = !m.active ? "" : !p.email ? `<span class="fn">keine E-Mail</span>`
       : `<button class="btn ghost" data-access="${m.id}">${m.user_id ? "Neuer Code" : "Zugang erzeugen"}</button>`;
-    return `<tr><td>${esc(fullName(m))}${m.user_id ? ` <span class="pill">App</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span></td>
+    return `<tr><td><button class="name-btn" data-edit="${m.id}">${esc(fullName(m))}</button>${m.user_id ? ` <span class="pill">App</span>` : ""}${!m.active ? ` <span class="pill off">inaktiv</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span></td>
       <td style="text-align:right">${p.phone ? `<a class="tel" href="tel:${esc(p.phone.replace(/\s/g, ""))}">${esc(p.phone)}</a>` : `<span class="fn">keine Nummer</span>`}<br>${access}</td></tr>${accessBox(m)}`;
   }).join("")}</tbody></table>`;
 }
@@ -259,8 +260,79 @@ async function createAccess(memberId) {
   state.access = { memberId, ...data };
   $("#phone-list").innerHTML = phoneRows(phoneList());
 }
+function field(id, label, value, type = "text", extra = "") {
+  return `<label for="${id}">${label}<input id="${id}" type="${type}" value="${esc(value ?? "")}" ${extra}></label>`;
+}
+function check(id, label, on) {
+  return `<label class="check" for="${id}"><input id="${id}" type="checkbox" ${on ? "checked" : ""}> ${label}</label>`;
+}
+function renderEdit() {
+  const isNew = state.edit === "new";
+  const m = isNew ? { active: true, is_admin: false } : state.allMembers.find(x => x.id === state.edit);
+  if (!m) { state.edit = null; return renderPhone(); }
+  const p = isNew ? {} : priv(m);
+  return `<button class="back" id="edit-cancel" type="button">‹ Alle Mitglieder</button>
+  <form class="panel" id="edit-form">
+    <h2>${isNew ? "Neues Mitglied" : esc(fullName(m))}</h2>
+    <div class="grid2">${field("e-first", "Vorname", m.first_name, "text", "required")}${field("e-last", "Nachname", m.last_name, "text", "required")}</div>
+    <div class="grid2">${field("e-rank", "Rang", m.rank)}${field("e-role", "Funktion", m.role_title)}</div>
+    ${field("e-email", "E-Mail (für die Anmeldung)", p.email, "email", 'autocomplete="off"')}
+    <div class="grid2">${field("e-phone", "Telefon", p.phone, "tel")}${field("e-rifle", "Gewehrnummer", p.rifle_number)}</div>
+    ${field("e-address", "Adresse", p.address)}
+    ${field("e-birthday", "Geburtstag", p.birthday, "date")}
+    <div class="checks">
+      ${check("e-post", "Rundschreiben per Post", p.needs_post)}
+      ${check("e-active", "Aktiv (kann sich anmelden)", m.active)}
+      ${check("e-admin", "Admin", m.is_admin)}
+    </div>
+    ${!isNew && m.user_id ? `<p class="rule">Eine geänderte E-Mail-Adresse gilt sofort auch für die Anmeldung. Der Zugangscode bleibt gleich.</p>` : ""}
+    <div class="row-actions"><button class="btn yes" type="submit" id="e-submit">Speichern</button><button class="btn ghost" type="button" id="edit-cancel2">Abbrechen</button></div>
+  </form>`;
+}
+async function saveMember() {
+  const isNew = state.edit === "new";
+  const val = id => $(id).value.trim() || null;
+  const email = val("#e-email")?.toLowerCase() || null;
+  const memberRow = {
+    first_name: val("#e-first"), last_name: val("#e-last"), rank: val("#e-rank"), role_title: val("#e-role"),
+    active: $("#e-active").checked, is_admin: $("#e-admin").checked
+  };
+  const privRow = {
+    email, phone: val("#e-phone"), rifle_number: val("#e-rifle"), address: val("#e-address"),
+    birthday: val("#e-birthday"), needs_post: $("#e-post").checked
+  };
+  const old = isNew ? null : state.allMembers.find(x => x.id === state.edit);
+  const oldEmail = old ? priv(old).email : null;
+  let id = state.edit;
+  if (isNew) {
+    const r = await db.from("members").insert(memberRow).select("id").single();
+    if (r.error) return saveFailed(r.error);
+    id = r.data.id;
+  } else {
+    const r = await db.from("members").update(memberRow).eq("id", id);
+    if (r.error) return saveFailed(r.error);
+  }
+  const r2 = await db.from("member_private").upsert({ member_id: id, ...privRow });
+  if (r2.error) return saveFailed(r2.error);
+  if (old?.user_id && email && email !== oldEmail) {
+    const { error } = await db.functions.invoke("zugang", { body: { member_id: id, action: "email" } });
+    if (error) toast("Gespeichert, aber die Anmelde-E-Mail konnte nicht geändert werden. Erzeuge einen neuen Zugangscode.");
+  }
+  await loadAll();
+  state.edit = null;
+  if (!state.me) { await db.auth.signOut(); return renderLogin(); }
+  render();
+  toast(isNew ? "Mitglied angelegt." : "Gespeichert.");
+}
+function saveFailed(error) {
+  console.error(error);
+  $("#e-submit").disabled = false;
+  toast(error.code === "23505" ? "Diese E-Mail-Adresse ist schon bei einem anderen Mitglied eingetragen." : "Speichern hat nicht geklappt. Bitte prüfe die Eingaben.");
+}
 function renderPhone() {
-  return `<input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
+  if (state.edit) return renderEdit();
+  return `<div class="row-actions" style="margin-bottom:10px"><button class="btn" id="member-new">Neues Mitglied</button></div>
+  <input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
   <div class="panel" id="phone-list">${phoneRows(phoneList())}</div>`;
 }
 function renderNew() {
@@ -316,10 +388,13 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; render(); return; }
+  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
+  if (d.edit) { state.edit = d.edit; state.access = null; render(); scrollTo(0, 0); return; }
+  if (t.id === "member-new") { state.edit = "new"; state.access = null; render(); scrollTo(0, 0); return; }
+  if (t.id === "edit-cancel" || t.id === "edit-cancel2") { state.edit = null; render(); return; }
   if (t.id === "copy-msg") {
     const text = $("#access-msg").textContent;
     try { await navigator.clipboard.writeText(text); toast("Nachricht kopiert."); }
@@ -347,6 +422,7 @@ document.addEventListener("submit", async ev => {
     const btn = ev.target.querySelector("button"); btn.disabled = true; btn.textContent = "Wird verschickt …";
     return login($("#login-email").value, $("#login-code").value);
   }
+  if (ev.target.id === "edit-form") { $("#e-submit").disabled = true; return saveMember(); }
   if (ev.target.id === "new-form") {
     $("#f-submit").disabled = true;
     const row = {
