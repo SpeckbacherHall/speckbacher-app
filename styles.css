@@ -140,3 +140,8 @@ label.check.sync-row{flex-direction:row;align-items:flex-start;gap:8px;font-size
 .sync-row s{color:var(--muted)}
 .sync-list{margin:0;padding-left:18px;columns:2;font-size:14px}
 label.btn{cursor:pointer}
+.hist-list{list-style:none;margin:0;padding:0}
+.hist-list li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line, #e3e3dc);font-size:15px}
+.hist-list li:last-child{border-bottom:0}
+.hist-list li .fn{white-space:nowrap}
+.hist-list li.now span:first-child{font-weight:700}

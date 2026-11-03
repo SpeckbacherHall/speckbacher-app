@@ -85,7 +85,7 @@ async function login(email, code) {
 async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const [mem, ev, rs, at, nl, bd, fb] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on)").order("last_name").order("first_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on,membership_status,fee_liable,seniority_counts,phone_private,phone_work,comment)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", daysAgoIso(400)).order("event_date").order("start_time", { nullsFirst: false }),
     db.from("responses").select("event_id,member_id,status,entered_by"),
     db.from("attendance").select("event_id,member_id,present"),
@@ -115,7 +115,8 @@ function renderMember() {
   if (state.showBirthdays) return renderBirthdays();
   if (state.showFibel) return renderFibel();
   if (state.settings) return renderSettings();
-  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  if (state.showHistory) return renderMyHistory();
+  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -459,10 +460,16 @@ function renderEdit() {
     <div class="grid2">${field("e-rank", "Rang", m.rank)}${field("e-role", "Funktion", m.role_title)}</div>
     <label for="e-gender">Anrede<select id="e-gender"><option value="m" ${m.gender !== "w" ? "selected" : ""}>Herr (Lieber …)</option><option value="w" ${m.gender === "w" ? "selected" : ""}>Frau (Liebe …)</option></select></label>
     ${field("e-email", "E-Mail (für die Anmeldung)", p.email, "email", 'autocomplete="off"')}
-    <div class="grid2">${field("e-phone", "Telefon", p.phone, "tel")}${field("e-rifle", "Gewehrnummer", p.rifle_number)}</div>
+    <div class="grid2">${field("e-phone", "Telefon (mobil)", p.phone, "tel")}${field("e-rifle", "Gewehrnummer", p.rifle_number)}</div>
+    <div class="grid2">${field("e-phone-private", "Telefon privat", p.phone_private, "tel")}${field("e-phone-work", "Telefon beruflich", p.phone_work, "tel")}</div>
     ${field("e-address", "Adresse", p.address)}
     <div class="grid2">${field("e-birthday", "Geburtstag", p.birthday, "date")}${field("e-joined", "Beitritt", p.joined_on, "date")}</div>
+    <div class="grid2">${field("e-status", "Mitgliedschaft (BTSK)", p.membership_status, "text", 'list="status-list"')}<span></span></div>
+    <datalist id="status-list"><option value="aktiv"><option value="ruhend"><option value="außerordentlich"><option value="unterstützend"></datalist>
+    <label for="e-comment">Kommentar<textarea id="e-comment" rows="2">${esc(p.comment ?? "")}</textarea></label>
     <div class="checks">
+      ${check("e-fee", "Beitragspflichtig", isNew ? true : p.fee_liable)}
+      ${check("e-seniority", "Zählt für Langjährigkeit", isNew ? true : p.seniority_counts)}
       ${check("e-post", "Rundschreiben per Post", p.needs_post)}
       ${check("e-active", "Aktiv (kann sich anmelden)", m.active)}
       ${check("e-board", "Vorstand (sieht Vorstandstermine)", m.is_board)}
@@ -475,7 +482,8 @@ function renderEdit() {
           <p class="fn">Auch der App-Zugang sowie alle Rückmeldungen und Anwesenheiten dieser Person werden gelöscht. Das lässt sich nicht rückgängig machen. Wer nur ausgetreten ist, wird besser mit „Aktiv“ abgehakt – dann bleibt die Geschichte erhalten.</p>
           <div class="row-actions"><button class="btn danger" type="button" id="member-delete-yes">Ja, endgültig löschen</button><button class="btn ghost" type="button" id="member-delete-no">Abbrechen</button></div></div>`
       : `<div class="row-actions"><button class="btn danger" type="button" id="member-delete">Mitglied löschen</button></div>`) : ""}
-  </form>`;
+  </form>
+  ${isNew ? "" : historyPanel(m.id)}`;
 }
 async function saveMember() {
   const isNew = state.edit === "new";
@@ -487,7 +495,9 @@ async function saveMember() {
   };
   const privRow = {
     email, phone: val("#e-phone"), rifle_number: val("#e-rifle"), address: val("#e-address"),
-    birthday: val("#e-birthday"), joined_on: val("#e-joined"), needs_post: $("#e-post").checked
+    birthday: val("#e-birthday"), joined_on: val("#e-joined"), needs_post: $("#e-post").checked,
+    phone_private: val("#e-phone-private"), phone_work: val("#e-phone-work"), membership_status: val("#e-status"),
+    comment: val("#e-comment"), fee_liable: $("#e-fee").checked, seniority_counts: $("#e-seniority").checked
   };
   const old = isNew ? null : state.allMembers.find(x => x.id === state.edit);
   const oldEmail = old ? priv(old).email : null;
@@ -573,7 +583,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }

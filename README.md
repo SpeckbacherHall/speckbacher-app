@@ -14,6 +14,7 @@ Pilotversion, Stand November 2026.
 | Kalender-Abo | `supabase/functions/kalender` | Persönlicher Abo-Link mit allen zugesagten Terminen |
 | Rundschreiben | `rundschreiben.js`, `letter.css`, Tabelle `newsletters` | Monatsbrief nach Briefvorlage, Veröffentlichung mit Push, Serienbrief |
 | Fibel | `fibel.js`, Tabelle `fibel_chapters` | Kapitel zum Lesen, Bearbeitung durch Admins |
+| Laufbahn | `laufbahn.js`, Tabelle `member_history` | Ränge, Funktionen, Auszeichnungen, Langjährigkeit und Schießleistung aus dem BTSK-Stammdatenblatt |
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
 
@@ -32,7 +33,7 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 ## Häufige Aufgaben
 
-**Mitglied anlegen oder ändern:** In der App unter Admin → Mitglieder auf den Namen tippen (oder „Neues Mitglied“). Dort lassen sich Name, Rang, Funktion, E-Mail, Telefon, Gewehrnummer, Adresse, Geburtstag, Postversand, Aktiv und Admin ändern. Eine geänderte E-Mail gilt sofort auch für die Anmeldung.
+**Mitglied anlegen oder ändern:** In der App unter Admin → Mitglieder auf den Namen tippen (oder „Neues Mitglied“). Dort lassen sich Name, Rang, Funktion, E-Mail, Telefonnummern (mobil, privat, beruflich), Gewehrnummer, Adresse, Geburtstag, Beitritt, Mitgliedschaftsstatus, Kommentar, Beitragspflicht, Langjährigkeit, Postversand, Aktiv, Vorstand und Admin ändern. Darunter steht die Laufbahn aus dem BTSK-Stammdatenblatt. Eine geänderte E-Mail gilt sofort auch für die Anmeldung.
 
 **Zugang vergeben:** In der App unter Admin → Mitglieder bei der Person auf „Zugang erzeugen“ tippen. Die fertige Nachricht mit Adresse, E-Mail und Code kopieren oder per WhatsApp schicken. „Neuer Code“ ersetzt einen verlorenen Code.
 
@@ -49,6 +50,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 **Geburtstagsliste:** Mitglieder öffnen sie über „Geburtstage“ bei den Ausrückungen (heute, nächste 30 Tage, ganzes Jahr). Sichtbar sind nur Name, Tag und Monat; das Alter und runde Geburtstage sehen nur Admins. Jedes Mitglied kann sich unter „Erinnerungen & Kalender“ ausblenden. Im Rundschreiben-Editor schlägt die App die runden Geburtstage des Monats als Glückwunsch für den freien Text vor.
 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
+
+**Laufbahn & Auszeichnungen:** Jedes Mitglied sieht seine eigene Laufbahn unter „Meine Laufbahn“, Admins sehen sie in der Mitgliederbearbeitung. Die Daten stammen aus dem Stammdatenblatt-Export des BTSK (Stand 3.11.2026) und wurden einmalig eingespielt; Jungschützen und Jungmarketenderinnen sind nicht enthalten.
 
 **Abgleich mit dem Dachverband (BTSK):** Im BTSK-Portal die Mitgliederliste als CSV exportieren, dann Admin → Mitglieder → „Abgleich mit BTSK-Export“ und Datei wählen. Die App zeigt neue Mitglieder, geänderte Angaben (E-Mail, Telefon, Adresse, Geburtstag, Beitritt, Rang, Funktion, Anrede, Postversand, Aktiv) und wer nur in der App steht. Übernommen wird nur Angehaktes; Gewehrnummern, Vorstand, Admin und App-Zugänge bleiben unberührt. Ein automatischer Abruf aus dem Portal ist nicht möglich (keine Schnittstelle, automatische Zugriffe gesperrt).
 
