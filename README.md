@@ -80,3 +80,9 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 2. Erster Admin-Zugang: Im Supabase-Dashboard unter *Authentication* → *Users* → *Add user* die Admin-E-Mail mit einem Passwort anlegen und „Auto Confirm User“ anhaken. Das Konto wird automatisch mit dem Mitglied verknüpft; alle weiteren Zugänge vergibt der Admin in der App.
 3. Supabase: *Authentication* → *Sign In / Providers* → „Allow new users to sign up“ ausschalten. Zugänge entstehen dann nur noch über die App.
 4. Optional eigene Adresse (z. B. app.speckbacher-schuetzen.at): CNAME-Eintrag beim Domain-Anbieter auf `speckbacherhall.github.io`, danach die Adresse unter *Settings* → *Pages* → *Custom domain* eintragen.
+
+## Anmelde-Erinnerung und Rundschreiben-Anzeige
+
+- Beim Termin (Anlegen/Bearbeiten) lässt sich ein Zeitpunkt für die **Anmelde-Erinnerung** setzen. Dann bekommen alle ohne Rückmeldung (bei Vorstandsterminen nur der Vorstand) eine Push-Nachricht. Der Zeitplan `anmelde-erinnerung` prüft alle 15 Minuten. In der Termin-Ansicht kann ein Admin zusätzlich „Jetzt an Rückmeldung erinnern“.
+- Die Erinnerung an alle mit Zusage am Vortag um 18 Uhr bleibt unverändert.
+- Admin → Rundschreiben → „Anzeige auf der Startseite zurücksetzen“ nimmt das aktuelle Rundschreiben bei allen von der Startseite; im Rundschreiben selbst lässt es sich wieder einblenden.

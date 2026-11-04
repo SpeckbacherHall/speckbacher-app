@@ -165,7 +165,7 @@ function renderMember() {
     if (r === "yes") act = `<span class="status yes">Zugesagt</span><button class="btn ghost" data-cal="${e.id}">In Kalender</button><button class="btn ghost" data-undo="${e.id}">Zusage zurückziehen</button>`;
     else if (r === "no") act = `<span class="status no">Abgesagt</span><button class="btn ghost" data-undo="${e.id}">Ändern</button>`;
     else act = `<button class="btn yes" data-yes="${e.id}">Zusagen</button>${canDecline(e) ? `<button class="btn no" data-no="${e.id}">Absagen</button>` : ""}`;
-    html += `<article class="card">
+    html += `<article class="card" id="ev-${e.id}">
       <div class="date"><div class="d">${day(e.event_date)}</div><div class="w">${wd(e.event_date)}</div></div>
       <div class="body">
         <span class="type t-${e.kind}">${TYPES[e.kind]}</span>
@@ -408,7 +408,11 @@ function renderAdmin() {
         ${tab === "anw" ? attendanceList(e, t) : `
         <div class="sec"><h4>Zugesagt <span>${t.yes.length}</span></h4>${rows(t.yes, "Noch keine Zusagen.", e, "yes")}</div>
         ${canDecline(e) ? `<div class="sec"><h4>Abgesagt <span>${t.no.length}</span></h4>${rows(t.no, "Keine Absagen.", e, "no")}</div>` : ""}
-        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>${rows(t.open, "Alle haben geantwortet.", e, "open")}</div>`}
+        <div class="sec"><h4>Keine Rückmeldung <span>${t.open.length}</span></h4>
+          ${t.open.length && e.event_date >= todayIso() ? `<p class="rule">${askLine(e)}</p><div class="row-actions" style="margin-bottom:8px">${state.askConfirm === e.id
+            ? `<span class="fn">${t.open.length} ${t.open.length === 1 ? "Person" : "Personen"} jetzt per Push erinnern?</span><button class="btn yes" id="ask-yes">Ja, erinnern</button><button class="btn ghost" id="ask-no">Abbrechen</button>`
+            : `<button class="btn" id="ask-now">Jetzt an Rückmeldung erinnern</button>`}</div>` : ""}
+          ${rows(t.open, "Alle haben geantwortet.", e, "open")}</div>`}
       </div>`;
     }
     state.openEvent = null;
@@ -578,6 +582,12 @@ function renderPhone() {
   <input class="search" id="phone-search" type="search" placeholder="Name, Rang oder Funktion suchen" value="${esc(state.phoneQuery)}" aria-label="Mitglied suchen">
   <div class="panel" id="phone-list">${phoneRows(phoneList())}</div>`;
 }
+// ISO-Zeitpunkt ↔ Eingabefeld „datetime-local“ (Ortszeit)
+function localDateTime(iso) {
+  const d = new Date(iso), p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const dtLabel = iso => new Date(iso).toLocaleString("de-AT", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 function renderNew(e = null) {
   const v = k => esc(e?.[k] ?? "");
   const t = k => esc(hm(e?.[k]));
@@ -597,6 +607,11 @@ function renderNew(e = null) {
     </div>
     <label for="f-place">Ort<input id="f-place" required placeholder="z. B. Pfarrkirche St. Nikolaus" value="${v("place")}"></label>
     <label for="f-notes">Hinweis (optional)<input id="f-notes" value="${v("notes")}"></label>
+    <label for="f-ask">Anmelde-Erinnerung an alle ohne Rückmeldung (optional)<input id="f-ask" type="datetime-local" value="${e?.ask_at ? localDateTime(e.ask_at) : ""}"></label>
+    <div class="filters" role="group" aria-label="Erinnerung schnell setzen">
+      ${[[7, "1 Woche vorher"], [3, "3 Tage vorher"], [2, "2 Tage vorher"]].map(([n, l]) => `<button class="chip" type="button" data-askdays="${n}">${l}</button>`).join("")}
+      <button class="chip" type="button" data-askdays="0">Keine</button></div>
+    <p class="rule">${e?.ask_sent_at ? `Verschickt am ${esc(dtLabel(e.ask_sent_at))}. Ein neuer Zeitpunkt schickt sie nochmals. ` : ""}Wer zugesagt hat, wird zusätzlich automatisch am Vortag um 18 Uhr erinnert.</p>
     <button class="btn yes" type="submit" id="f-submit">${e ? "Änderungen speichern" : "Termin veröffentlichen"}</button>
   </form>`;
 }
@@ -610,6 +625,30 @@ function exportCsv(e) {
     [...t.yes.map(m => line(m, "zugesagt")), ...t.no.map(m => line(m, "abgesagt")), ...t.open.map(m => line(m, "offen"))].join("\r\n");
   download(`Rueckmeldungen_${e.event_date}_${e.title.replace(/[^\wäöüÄÖÜß-]+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
 }
+
+function askLine(e) {
+  if (e.ask_sent_at) return `Anmelde-Erinnerung verschickt am ${esc(dtLabel(e.ask_sent_at))}.`;
+  if (e.ask_at) return `Anmelde-Erinnerung geplant für ${esc(dtLabel(e.ask_at))}.`;
+  return "Keine Anmelde-Erinnerung geplant (unter „Bearbeiten“ einstellbar).";
+}
+async function askNow(e) {
+  const { data, error } = await db.functions.invoke("erinnerung", { body: { mode: "ask", id: e.id } });
+  state.askConfirm = null;
+  if (error) { render(); return toast("Erinnerung konnte nicht verschickt werden."); }
+  e.ask_sent_at = new Date().toISOString();
+  render();
+  toast(`Erinnerung an ${data.sent} von ${data.open} verschickt${data.sent < data.open ? " (die übrigen haben keine Push-Erinnerungen aktiviert)" : ""}.`);
+}
+function openEventFromHash() {
+  const m = location.hash.match(/^#t-(\d+)$/);
+  if (!m || !state.me) return;
+  state.role = "member"; state.filter = "alle"; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.showHistory = false; state.showMyData = false;
+  render();
+  const el = document.getElementById(`ev-${m[1]}`);
+  if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash"); }
+  history.replaceState(null, "", location.pathname + location.search);
+}
+window.addEventListener("hashchange", openEventFromHash);
 
 /* ---------- Steuerung ---------- */
 function render() {
@@ -674,6 +713,17 @@ document.addEventListener("click", async ev => {
   if (d.set !== undefined && d.status !== undefined) { t.disabled = true; return setRespFor(state.openEvent, d.set, d.status || null); }
   if (d.when) { state.when = d.when; render(); return; }
   if (d.dtab) { state.detailTab = d.dtab; render(); return; }
+  if (t.id === "ask-now") { state.askConfirm = state.openEvent; render(); return; }
+  if (t.id === "ask-no") { state.askConfirm = null; render(); return; }
+  if (t.id === "ask-yes") { t.disabled = true; const e = state.events.find(x => x.id === state.openEvent); if (e) await askNow(e); return; }
+  if (d.askdays !== undefined) {
+    const n = Number(d.askdays), date = $("#f-date").value;
+    if (!n) { $("#f-ask").value = ""; return; }
+    if (!date) return toast("Bitte zuerst das Datum des Termins eintragen.");
+    const x = new Date(`${date}T18:00`); x.setDate(x.getDate() - n);
+    $("#f-ask").value = localDateTime(x.toISOString());
+    return;
+  }
   if (d.att) {
     const e = state.events.find(x => x.id === state.openEvent);
     const val = d.val === "true";
@@ -726,7 +776,8 @@ document.addEventListener("submit", async ev => {
     const row = {
       kind: $("#f-kind").value, title: $("#f-title").value.trim(), event_date: $("#f-date").value,
       start_time: $("#f-time").value || null, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
-      dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null
+      dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null,
+      ask_at: $("#f-ask").value ? new Date($("#f-ask").value).toISOString() : null
     };
     if (!editing) row.created_by = state.me.id;
     const { data, error } = editing
@@ -765,6 +816,7 @@ async function boot() {
   try { const r = localStorage.getItem("sp-role"); if (["admin", "member", "board"].includes(r)) state.role = r; } catch (e) {}
   render();
   openFromHash();
+  openEventFromHash();
   openChangesFromHash();
   openProtocolsFromHash();
 }

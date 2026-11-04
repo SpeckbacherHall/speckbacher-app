@@ -170,3 +170,5 @@ label.btn{cursor:pointer}
 .hint-box ul{margin:4px 0 0;padding-left:20px}
 details.panel summary{cursor:pointer}
 .card.next-session{border:2px solid var(--brass)}
+.card.flash{animation:flash 2.4s ease-out}
+@keyframes flash{0%,40%{box-shadow:0 0 0 3px var(--brass)}100%{box-shadow:none}}

@@ -85,7 +85,7 @@ const noAppRecipients = () => state.members.filter(m => !m.user_id);
 /* ---------- Mitglieder ---------- */
 function latestNewsletter() {
   const cutoff = firstOfMonth(todayIso(), -1);
-  return (state.newsletters || []).filter(n => n.published_at && n.month >= cutoff).sort((a, b) => b.month.localeCompare(a.month))[0];
+  return (state.newsletters || []).filter(n => n.published_at && !n.hidden && n.month >= cutoff).sort((a, b) => b.month.localeCompare(a.month))[0];
 }
 function newsletterCard() {
   const nl = latestNewsletter();
@@ -103,6 +103,15 @@ function renderLetterView() {
 }
 
 /* ---------- Admin ---------- */
+async function setNewsletterHidden(ids, hidden) {
+  state.nlHideConfirm = false;
+  if (!ids.length) return render();
+  const { error } = await db.from("newsletters").update({ hidden }).in("id", ids);
+  if (error) { render(); return fail(error, "Das hat nicht geklappt."); }
+  state.newsletters = state.newsletters.map(n => ids.includes(n.id) ? { ...n, hidden } : n);
+  render();
+  toast(hidden ? "Das Rundschreiben wird bei niemandem mehr auf der Startseite angezeigt." : "Das Rundschreiben steht wieder auf der Startseite.");
+}
 function defaultMonth() {
   const t = todayIso();
   return firstOfMonth(t, Number(t.slice(8, 10)) > 20 ? 1 : 0);
@@ -113,11 +122,16 @@ function lastNewsletter() {
 function renderNewsletters() {
   if (state.nlEdit) return renderNewsletterEditor();
   const list = [...(state.newsletters || [])].sort((a, b) => b.month.localeCompare(a.month));
-  return `<div class="row-actions" style="margin-bottom:12px"><button class="btn yes" id="nl-new">Neues Rundschreiben</button></div>
+  const shown = latestNewsletter();
+  return `<div class="row-actions" style="margin-bottom:12px"><button class="btn yes" id="nl-new">Neues Rundschreiben</button>
+    ${shown ? (state.nlHideConfirm
+      ? `<span class="fn">„${esc(nlMonthTitle(shown.month))}“ bei allen von der Startseite nehmen?</span><button class="btn danger" id="nl-hide-yes">Ja, zurücksetzen</button><button class="btn ghost" id="nl-hide-no">Abbrechen</button>`
+      : `<button class="btn" id="nl-hide">Anzeige auf der Startseite zurücksetzen</button>`) : ""}</div>
+  ${shown ? `<p class="rule">Auf der Startseite aller Mitglieder steht derzeit: <b>${esc(nlMonthTitle(shown.month))}</b>.</p>` : `<p class="rule">Auf der Startseite wird derzeit kein Rundschreiben angezeigt.</p>`}
   ${list.length ? `<div class="list">${list.map(n => `<button class="card ev" data-nl="${n.id}">
       <div class="date"><div class="d">✉</div></div>
       <div class="body"><h3>${esc(nlMonthTitle(n.month))}</h3>
-      <p class="meta"><span>${n.published_at ? `Veröffentlicht am ${dmy(n.published_at.slice(0, 10))}` : "Entwurf"} · ${n.event_ids.length} Termine${n.preview_ids.length ? ` + ${n.preview_ids.length} Vorschau` : ""}</span></p></div></button>`).join("")}</div>`
+      <p class="meta"><span>${n.published_at ? `Veröffentlicht am ${dmy(n.published_at.slice(0, 10))}${n.hidden ? " · nicht mehr auf der Startseite" : ""}` : "Entwurf"} · ${n.event_ids.length} Termine${n.preview_ids.length ? ` + ${n.preview_ids.length} Vorschau` : ""}</span></p></div></button>`).join("")}</div>`
     : `<p class="empty">Noch kein Rundschreiben. Lege mit „Neues Rundschreiben“ das erste an.</p>`}`;
 }
 function eventChecks(list, selected, name) {
@@ -154,7 +168,7 @@ function renderNewsletterEditor() {
       ? `<p class="fn">Veröffentlicht am ${dmy(saved.published_at.slice(0, 10))}. Mitglieder sehen es in der App; Änderungen nach dem Speichern sind sofort sichtbar.</p>
         ${state.nlResendConfirm
           ? `<p><b>Rundschreiben nochmals per Push an alle schicken?</b></p><div class="row-actions"><button class="btn yes" id="nl-resend-yes">Ja, erneut schicken</button><button class="btn ghost" id="nl-resend-no">Abbrechen</button></div>`
-          : `<div class="row-actions"><button class="btn" id="nl-resend">Erneut per Push schicken</button></div>`}`
+          : `<div class="row-actions"><button class="btn" id="nl-resend">Erneut per Push schicken</button>${saved.hidden ? `<button class="btn" id="nl-unhide">Wieder auf der Startseite anzeigen</button>` : ""}</div>`}`
       : state.nlConfirm
         ? `<p><b>Jetzt veröffentlichen und alle mit Erinnerungen per Push benachrichtigen?</b></p><div class="row-actions"><button class="btn yes" id="nl-publish-yes">Ja, veröffentlichen</button><button class="btn ghost" id="nl-publish-no">Abbrechen</button></div>`
         : `<p class="fn">Erst speichern, dann veröffentlichen. Alle Mitglieder sehen es danach in der App und bekommen eine Push-Nachricht.</p><div class="row-actions"><button class="btn yes" id="nl-publish">In der App veröffentlichen</button></div>`}
@@ -244,6 +258,10 @@ document.addEventListener("click", async ev => {
   if (t.id === "nl-back") { state.nlEdit = false; render(); return; }
   if (t.id === "nl-preview") { readNewsletterForm(); state.nlShowPreview = true; render(); document.querySelector(".letter-screen")?.scrollIntoView({ behavior: "smooth" }); return; }
   if (t.id === "nl-publish") { state.nlConfirm = true; render(); return; }
+  if (t.id === "nl-hide") { state.nlHideConfirm = true; render(); return; }
+  if (t.id === "nl-hide-no") { state.nlHideConfirm = false; render(); return; }
+  if (t.id === "nl-hide-yes") { t.disabled = true; return setNewsletterHidden(state.newsletters.filter(n => n.published_at && !n.hidden).map(n => n.id), true); }
+  if (t.id === "nl-unhide") { t.disabled = true; return setNewsletterHidden([state.nlDraft.id], false); }
   if (t.id === "nl-publish-no") { state.nlConfirm = false; render(); return; }
   if (t.id === "nl-publish-yes") { t.disabled = true; return publishNewsletter(); }
   if (t.id === "nl-resend") { state.nlResendConfirm = true; render(); return; }
