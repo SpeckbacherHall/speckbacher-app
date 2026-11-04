@@ -348,6 +348,11 @@ async function createProtocol() {
   const btn = $("#pn-submit"), prog = $("#pn-progress");
   const notes = $("#pn-notes").value.trim(), audio = $("#pn-audio").files[0];
   if (!notes && !audio) { btn.disabled = false; return toast("Bitte Mitschrift oder Aufnahme angeben."); }
+  // Große Aufnahmen werden in Teilen gespeichert und einzeln erkannt – das funktioniert nur bei MP3
+  if (audio && audio.size > PROT_PART && !/mpeg|mp3/i.test(audio.type) && !/\.mp3$/i.test(audio.name)) {
+    btn.disabled = false;
+    return toast("Aufnahmen über 45 MB bitte als MP3 hochladen (z. B. im Rekorder als MP3 speichern oder umwandeln).");
+  }
   const date = $("#pn-date").value, s = suggestMeeting();
   const { data: p, error } = await db.from("protocols").insert({
     meeting_date: date, number: Number($("#pn-number").value) || null, title: $("#pn-title").value.trim() || "Vorstandssitzung",
@@ -359,7 +364,7 @@ async function createProtocol() {
     for (let i = 0; i < n; i++) {
       prog.textContent = `Aufnahme wird hochgeladen … ${Math.round(i / n * 100)} %`;
       const { error: e } = await db.storage.from("vorstand").upload(`audio/${p.id}/part-${String(i).padStart(3, "0")}`,
-        audio.slice(i * PROT_PART, (i + 1) * PROT_PART), { contentType: "application/octet-stream", upsert: true });
+        audio.slice(i * PROT_PART, (i + 1) * PROT_PART), { contentType: audio.type || "application/octet-stream", upsert: true });
       if (e) { console.error(e); prog.textContent = ""; btn.disabled = false; await db.from("protocols").update({ job_state: "fehler", job_error: "Hochladen der Aufnahme fehlgeschlagen." }).eq("id", p.id); return toast("Die Aufnahme konnte nicht hochgeladen werden. Bitte erneut versuchen."); }
     }
     await db.from("protocols").update({ audio_parts: n, audio_type: audio.type || "audio/mp4", audio_name: audio.name }).eq("id", p.id);

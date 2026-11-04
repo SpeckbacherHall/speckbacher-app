@@ -73,34 +73,69 @@ async function serveAudio(req: Request, url: URL) {
   if (!id || url.searchParams.get("t") !== await signature(id)) return new Response("Nicht erlaubt.", { status: 403 });
   const { data: p } = await db.from("protocols").select("audio_type,audio_parts").eq("id", id).maybeSingle();
   const { data: files } = await db.storage.from(BUCKET).list(`audio/${id}`, { limit: 1000, sortBy: { column: "name", order: "asc" } });
-  const parts = (files ?? []).filter((f) => f.name.startsWith("part-")).sort((a, b) => a.name.localeCompare(b.name));
+  let parts = (files ?? []).filter((f) => f.name.startsWith("part-")).sort((a, b) => a.name.localeCompare(b.name));
+  // ?part=N liefert nur einen Teil (MP3-Aufnahmen werden in Teilen an Azure übergeben, siehe startTranscription)
+  if (url.searchParams.has("part")) parts = parts.filter((f) => f.name === `part-${String(Number(url.searchParams.get("part"))).padStart(3, "0")}`);
   if (!p || !parts.length) return new Response("Keine Aufnahme.", { status: 404 });
+  // Azure lädt große Dateien in Abschnitten (Range-Anfragen) – die Teile werden dafür passend zusammengesetzt
   // deno-lint-ignore no-explicit-any
-  const total = parts.reduce((s, f) => s + Number((f.metadata as any)?.size ?? 0), 0);
-  const headers: Record<string, string> = { "Content-Type": p.audio_type || "application/octet-stream", "Cache-Control": "no-store" };
-  if (total) headers["Content-Length"] = String(total);
-  if (req.method === "HEAD") return new Response(null, { headers });
+  const sizes = parts.map((f) => Number((f.metadata as any)?.size ?? 0));
+  const total = sizes.reduce((a, b) => a + b, 0);
+  const headers: Record<string, string> = { "Content-Type": p.audio_type || "application/octet-stream", "Cache-Control": "no-store", "Accept-Ranges": "bytes" };
+  let start = 0, end = total - 1, status = 200;
+  const m = /^bytes=(\d*)-(\d*)$/.exec((req.headers.get("Range") ?? "").trim());
+  if (m && (m[1] || m[2])) {
+    if (!m[1]) start = Math.max(0, total - Number(m[2]));
+    else { start = Number(m[1]); if (m[2]) end = Math.min(Number(m[2]), total - 1); }
+    if (start > end) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${total}` } });
+    status = 206;
+    headers["Content-Range"] = `bytes ${start}-${end}/${total}`;
+  }
+  headers["Content-Length"] = String(end - start + 1);
+  if (req.method === "HEAD") return new Response(null, { status, headers });
   const { readable, writable } = new TransformStream();
   (async () => {
     try {
-      for (const f of parts) {
-        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/audio/${id}/${f.name}`, { headers: { Authorization: `Bearer ${SERVICE_KEY}` } });
-        if (!r.ok || !r.body) throw new Error(`Teil ${f.name}: ${r.status}`);
+      let off = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const s0 = off, e0 = off + sizes[i] - 1;
+        off += sizes[i];
+        if (e0 < start || s0 > end) continue;
+        const from = Math.max(start, s0) - s0, to = Math.min(end, e0) - s0;
+        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/audio/${id}/${parts[i].name}`,
+          { headers: { Authorization: `Bearer ${SERVICE_KEY}`, Range: `bytes=${from}-${to}` } });
+        if (!r.ok || !r.body) throw new Error(`Teil ${parts[i].name}: ${r.status}`);
         await r.body.pipeTo(writable, { preventClose: true });
       }
       await writable.close();
-    } catch (e) { console.error(e); await writable.abort(e); }
+    } catch (e) { console.error(e); await writable.abort(e).catch(() => {}); }
   })();
-  return new Response(readable, { headers });
+  return new Response(readable, { status, headers });
 }
 
 // ---------- Spracherkennung ----------
-async function startTranscription(id: number) {
-  const audioUrl = `${SUPABASE_URL}/functions/v1/protokoll?audio=${id}&t=${await signature(id)}`;
+// deno-lint-ignore no-explicit-any
+const isMp3 = (p: any) => /mpeg|mp3/i.test(p.audio_type ?? "") || /\.mp3$/i.test(p.audio_name ?? "");
+// Azure holt die Aufnahme direkt aus dem Speicher (zeitlich begrenzte, signierte Adressen). Das Durchreichen
+// über diese Funktion bricht bei großen Dateien ab (Rechenzeitgrenze) – Azure meldet dann „invalid data“.
+// Mehrteilige Aufnahmen gehen nur bei MP3: MP3 besteht aus unabhängigen Frames, jeder Teil (45 MB,
+// bei 320 kbit/s ca. 20 Minuten) ist für sich abspielbar und wird als eigene Datei transkribiert.
+// deno-lint-ignore no-explicit-any
+async function startTranscription(p: any) {
+  const id = p.id as number;
+  let contentUrls: string[];
+  if (p.audio_parts === 1 || isMp3(p)) {
+    const paths = Array.from({ length: p.audio_parts }, (_, i) => `audio/${id}/part-${String(i).padStart(3, "0")}`);
+    const { data, error } = await db.storage.from(BUCKET).createSignedUrls(paths, 48 * 3600);
+    if (error || !data?.length || data.some((d) => !d.signedUrl)) throw new Error("Die Aufnahme konnte im Speicher nicht gefunden werden.");
+    contentUrls = data.map((d) => d.signedUrl.startsWith("http") ? d.signedUrl : `${SUPABASE_URL}/storage/v1${d.signedUrl}`);
+  } else {
+    contentUrls = [`${SUPABASE_URL}/functions/v1/protokoll?audio=${id}&t=${await signature(id)}`];
+  }
   const r = await fetch(`${SPEECH}/speechtotext/v3.2/transcriptions`, {
     method: "POST", headers: speechHeaders(),
     body: JSON.stringify({
-      displayName: `Speckbacher Protokoll ${id}`, locale: "de-AT", contentUrls: [audioUrl],
+      displayName: `Speckbacher Protokoll ${id}`, locale: "de-AT", contentUrls,
       properties: { diarizationEnabled: true, diarization: { speakers: { minCount: 1, maxCount: 15 } },
         punctuationMode: "DictatedAndAutomatic", profanityFilterMode: "None", timeToLiveHours: 48 },
     }),
@@ -113,19 +148,26 @@ async function startTranscription(id: number) {
 }
 const clock = (ticks: number) => { const s = Math.floor(ticks / 1e7); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 // deno-lint-ignore no-explicit-any
-function transcriptText(result: any) {
+function transcriptText(results: any[]) {
   const lines: string[] = [];
-  let last = -1;
-  // deno-lint-ignore no-explicit-any
-  for (const ph of (result.recognizedPhrases ?? []) as any[]) {
-    const text = ph.nBest?.[0]?.display;
-    if (!text) continue;
-    const sp = ph.speaker ?? 0;
-    if (sp !== last || !lines.length) { lines.push(`[${clock(ph.offsetInTicks ?? 0)}] Sprecher ${sp}: ${text}`); last = sp; }
-    else lines[lines.length - 1] += " " + text;
-  }
+  let offset = 0;
+  results.forEach((result, i) => {
+    // Bei mehreren Teilen erkennt Azure die Sprecher je Teil neu – die Nummern gelten nur innerhalb eines Teils
+    if (results.length > 1) lines.push(`--- Teil ${i + 1} von ${results.length} (Sprechernummern neu) ---`);
+    let last = -1;
+    // deno-lint-ignore no-explicit-any
+    for (const ph of (result.recognizedPhrases ?? []) as any[]) {
+      const text = ph.nBest?.[0]?.display;
+      if (!text) continue;
+      const sp = ph.speaker ?? 0;
+      if (sp !== last) { lines.push(`[${clock(offset + (ph.offsetInTicks ?? 0))}] Sprecher ${sp}: ${text}`); last = sp; }
+      else lines[lines.length - 1] += " " + text;
+    }
+    offset += Number(result.durationInTicks ?? 0);
+  });
   return lines.join("\n");
 }
+const partNo = (src: string) => Number(/part-(\d+)/.exec(src)?.[1] ?? 0);
 // deno-lint-ignore no-explicit-any
 async function checkTranscription(p: any) {
   const r = await fetch(p.job_ref, { headers: speechHeaders() });
@@ -133,9 +175,16 @@ async function checkTranscription(p: any) {
   if (t.status === "Succeeded") {
     const files = await (await fetch(`${p.job_ref}/files`, { headers: speechHeaders() })).json();
     // deno-lint-ignore no-explicit-any
-    const f = (files.values ?? []).find((v: any) => v.kind === "Transcription");
-    const result = f ? await (await fetch(f.links.contentUrl)).json() : {};
-    const transcript = transcriptText(result);
+    const results: any[] = [];
+    // deno-lint-ignore no-explicit-any
+    for (const f of (files.values ?? []).filter((v: any) => v.kind === "Transcription")) results.push(await (await fetch(f.links.contentUrl)).json());
+    results.sort((a, b) => partNo(a.source ?? "") - partNo(b.source ?? ""));
+    if (!results.length) {
+      await db.from("protocols").update({ job_state: "fehler", job_error: "Spracherkennung fehlgeschlagen: Azure konnte die Aufnahme nicht lesen." }).eq("id", p.id);
+      return;
+    }
+    const expected = isMp3(p) && p.audio_parts > 1 ? p.audio_parts : 1;
+    const transcript = (results.length < expected ? `(Hinweis: Nur ${results.length} von ${expected} Teilen der Aufnahme konnten erkannt werden.)\n` : "") + transcriptText(results);
     await db.from("protocols").update({ transcript, job_state: "entwurf", job_error: null }).eq("id", p.id);
     await fetch(p.job_ref, { method: "DELETE", headers: speechHeaders() });
   } else if (t.status === "Failed") {
@@ -197,7 +246,7 @@ async function writeDraft(p: any) {
 }
 
 async function poll() {
-  const { data: running } = await db.from("protocols").select("id,job_ref,job_started_at").eq("job_state", "transkription");
+  const { data: running } = await db.from("protocols").select("id,job_ref,job_started_at,audio_parts,audio_type,audio_name").eq("job_state", "transkription");
   for (const p of running ?? []) {
     try { await checkTranscription(p); } catch (e) { console.error("Abfrage", p.id, e); }
   }
@@ -259,8 +308,9 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
-  if (body.mode === "check" && req.headers.get("x-cron-secret") === await secret("cron_secret")) return json(await check());
-  const me = await requireAdmin(req);
+  const viaCron = req.headers.get("x-cron-secret") === await secret("cron_secret");
+  if (body.mode === "check" && viaCron) return json(await check());
+  const me = viaCron && body.mode === "start" ? { id: null } : await requireAdmin(req);
   if (!me) return json({ error: "Nur Admins." }, 403);
 
   if (body.mode === "check") return json(await check());
@@ -281,7 +331,7 @@ Deno.serve(async (req) => {
     try {
       // Liegt schon eine Abschrift vor (z. B. „Entwurf neu erstellen“), wird nicht erneut transkribiert
       if (p.audio_parts > 0 && !p.transcript?.trim()) {
-        const ref = await startTranscription(p.id);
+        const ref = await startTranscription(p);
         await db.from("protocols").update({ job_state: "transkription", job_ref: ref, job_error: null, job_started_at: new Date().toISOString() }).eq("id", p.id);
       } else if (p.notes?.trim() || p.transcript?.trim()) {
         await db.from("protocols").update({ job_state: "entwurf", job_error: null, job_started_at: new Date().toISOString() }).eq("id", p.id);
