@@ -148,7 +148,8 @@ function renderMember() {
   if (state.settings) return renderSettings();
   if (state.showHistory) return renderMyHistory();
   if (state.showMyData) return renderMyData();
-  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  if (state.showProtocols) return renderProtocols();
+  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button>${canProtocols() ? `<button class="btn" id="open-protocols">Protokolle</button>` : ""}<button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -629,7 +630,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
   if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false; state.showMyData = false;
+    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false; state.showMyData = false; state.showProtocols = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
@@ -764,6 +765,7 @@ async function boot() {
   render();
   openFromHash();
   openChangesFromHash();
+  openProtocolsFromHash();
 }
 // Erst starten, wenn alle Skripte (auch rundschreiben.js) geladen sind
 db.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN" && !state.me && document.readyState !== "loading") start(); });

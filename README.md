@@ -15,6 +15,7 @@ Pilotversion, Stand November 2026.
 | Rundschreiben | `rundschreiben.js`, `letter.css`, Tabelle `newsletters` | Monatsbrief nach Briefvorlage, Veröffentlichung mit Push, Serienbrief |
 | Fibel | `fibel.js`, Tabelle `fibel_chapters` | Kapitel zum Lesen, Bearbeitung durch Admins |
 | Meine Daten | `meinedaten.js`, Tabelle `member_changes`, Trigger `log_member_change`/`notify_member_change` | Mitglieder ändern Telefon, Adresse, Geburtstag selbst; Admins bekommen eine Push-Nachricht |
+| Vorstandsprotokolle | `protokolle.js`, Tabelle `protocols`, Speicher `vorstand`, `supabase/functions/protokoll`, Zeitplan `protokoll-verarbeitung` | Archiv (PDF) für den Vorstand; Entwurf aus Mitschrift und Aufnahme über Azure Speech + Azure OpenAI |
 | Laufbahn | `laufbahn.js`, Tabelle `member_history` | Ränge, Funktionen, Auszeichnungen, Langjährigkeit und Schießleistung aus dem BTSK-Stammdatenblatt |
 | Erinnerungen | `supabase/functions/erinnerung`, `sw.js`, Zeitplan `erinnerung-vortag` (pg_cron) | Push am Vortag um 18 Uhr für zugesagte Termine |
 | Datenbankschema | `supabase/migrations/` | Tabellen und Rechte, nachvollziehbar versioniert |
@@ -53,6 +54,13 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 **Rückmeldung für jemanden ohne App:** Termin öffnen, beim Namen unter „Keine Rückmeldung“ auf „Zusage“ oder „Absage“ tippen.
 
 **Meine Daten / Änderungsmeldungen:** Mitglieder ändern unter „Meine Daten“ Telefonnummern, Adresse und Geburtstag selbst und können dem Schriftführer eine Nachricht schicken (z. B. neue E-Mail-Adresse – die E-Mail ist die Anmeldung und wird nur vom Admin geändert). Jede Änderung landet in der Tabelle `member_changes`; alle Admins mit aktivierten Benachrichtigungen bekommen sofort eine Push-Nachricht. Offene Meldungen stehen oben unter Admin → Mitglieder und werden mit „Erledigt“ abgehakt (am besten nachdem sie im BTSK-Portal nachgetragen sind). Änderungen durch Admins werden nicht gemeldet.
+
+**Vorstandsprotokolle:** Bei den Ausrückungen „Protokolle“ (nur für Vorstand und Admins sichtbar). Vorstandsmitglieder sehen die finalen Protokolle als PDF.
+- *Neues Protokoll (Admin):* Datum, Nummer, Mitschrift (Word-Datei oder Text) und optional die Audioaufnahme angeben. Die Aufnahme wird in Teilen zu je 45 MB gespeichert, Azure holt sie über einen signierten Link ab (Batch-Spracherkennung, Tarif S0, de-AT, Sprechertrennung). Ein Zeitplan prüft alle zwei Minuten, dann schreibt Azure OpenAI (Bereitstellung `protokoll`, änderbar über das Secret `AZURE_OPENAI_DEPLOYMENT`) den Entwurf im Aufbau der Protokollvorlage. Wenn er fertig ist, kommt eine Push-Nachricht.
+- *Bearbeiten:* Kopf (Sitzungs-/Protokollführung, Anwesende, Abwesende), Text mit „## Abschnitt“, „### Person“, „- Punkt“; Vorschau, „Entwurf als PDF“ und „Als Word“ zum Verschicken an den Hauptmann.
+- *Abschließen:* erzeugt das PDF (Karla, Seitenzahlen), legt es im privaten Speicher ab, löscht Mitschrift, Abschrift und Aufnahme und informiert auf Wunsch den Vorstand per Push.
+- *Alte Protokolle hochladen:* mehrere PDFs auf einmal; Nummer und Datum werden aus dem Dateinamen gelesen.
+- *Azure prüfen:* zeigt, ob Spracherkennung und KI-Modell erreichbar sind.
 
 **Laufbahn & Auszeichnungen:** Jedes Mitglied sieht seine eigene Laufbahn unter „Meine Laufbahn“, Admins sehen sie in der Mitgliederbearbeitung. Die Daten stammen aus dem Stammdatenblatt-Export des BTSK (Stand 3.11.2026) und wurden einmalig eingespielt; Jungschützen und Jungmarketenderinnen sind nicht enthalten.
 

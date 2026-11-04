@@ -150,3 +150,22 @@ label.btn{cursor:pointer}
 .change-row p{margin:2px 0}
 .change-note{font-style:italic;margin:6px 0}
 .linkish{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}
+/* Vorstandsprotokolle */
+.prot-doc{font-size:15px;line-height:1.45}
+.prot-doc .prot-title{font-size:26px;font-weight:800;margin:0;letter-spacing:.01em}
+.prot-doc .prot-sub{font-size:16px;margin:2px 0 14px}
+.prot-head{border-collapse:collapse;margin-bottom:10px}
+.prot-head th{font-weight:400;color:var(--muted);text-align:left;vertical-align:top;padding:2px 16px 4px 0;white-space:nowrap}
+.prot-head td{padding:2px 0 4px;vertical-align:top}
+.prot-doc .prot-h2{font-size:17px;font-weight:800;margin:18px 0 2px;text-transform:uppercase}
+.prot-doc .prot-h3{font-size:15px;font-weight:700;margin:10px 0 2px}
+.prot-doc ul{margin:2px 0 4px;padding-left:22px}
+.prot-doc ul ul{list-style:circle}
+.prot-doc ul ul ul{list-style:square}
+.prot-doc p{margin:3px 0}
+.prot-doc .prot-end{margin-top:18px}
+.prot-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.45}
+.prot-raw{max-height:340px;overflow:auto;white-space:pre-wrap}
+.hint-box{border-left:4px solid var(--brass)}
+.hint-box ul{margin:4px 0 0;padding-left:20px}
+details.panel summary{cursor:pointer}
