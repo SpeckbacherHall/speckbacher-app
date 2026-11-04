@@ -182,9 +182,16 @@ async function writeDraft(p: any) {
   const user = `MITSCHRIFT:\n${p.notes?.trim() || "(keine Mitschrift)"}\n\nABSCHRIFT DER AUFNAHME:\n${p.transcript?.trim() || "(keine Aufnahme)"}`;
   const out = await chat([{ role: "system", content: systemPrompt(await boardList(), dmy(p.meeting_date)) }, { role: "user", content: user }], 16000, true, 135_000);
   const d = JSON.parse(out.choices?.[0]?.message?.content ?? "{}");
-  const list = (v: unknown) => Array.isArray(v) ? v.join("\n") : (v ?? "") as string;
+  const arr = (v: unknown) => (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((x) => String(x).trim()).filter(Boolean);
+  const list = (v: unknown) => arr(v).join("\n");
+  // Nachbesserung: Sitzungs- und Protokollführung nicht doppelt bei den Anwesenden, Verspätete zählen als anwesend
+  const base = (n: string) => n.replace(/\s*\(.*\)\s*$/, "").trim();
+  const lead = new Set([d.chair, d.recorder].filter(Boolean).map((n: string) => base(n)));
+  const late = arr(d.absent).filter((n) => /verspätet/i.test(n));
+  const present = [...arr(d.present).filter((n) => !lead.has(base(n))), ...late.filter((n) => !arr(d.present).some((x) => base(x) === base(n)))];
+  const absent = arr(d.absent).filter((n) => !/verspätet/i.test(n));
   return {
-    chair: d.chair || null, recorder: d.recorder || null, present: list(d.present) || null, absent: list(d.absent) || null,
+    chair: d.chair || null, recorder: d.recorder || null, present: present.join("\n") || null, absent: absent.join("\n") || null,
     ended_at: d.ended_at || null, body: String(d.body ?? "").trim(), hints: list(d.hinweise) || null,
   };
 }

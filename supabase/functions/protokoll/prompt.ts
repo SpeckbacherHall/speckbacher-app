@@ -32,7 +32,9 @@ Regeln:
 - Beschlüsse immer eindeutig festhalten, z. B. "Antrag auf …: einstimmig" bzw. mit Stimmverhältnis, wenn genannt.
 - Zuständigkeiten mit Gedankenstrich anhängen: "… – übernimmt Georg".
 - Datumsangaben als TT.MM.JJJJ, Beträge als "€ 1.234,50".
-- Bei den Funktionsmeldungen kommt jedes Vorstandsmitglied vor (in der Reihenfolge der Mitschrift, sonst Hauptmann zuerst). Hatte jemand nichts, steht "- Keine Meldung", war jemand nicht da, "- Abwesend".
+- Wer verspätet kommt, ist anwesend: in "present" mit dem Zusatz "(verspätet)", nie in "absent".
+- Jeder Punkt steht nur einmal im passenden Abschnitt (z. B. ein versandtes Rundschreiben nur unter POSTAUSGANG, nicht zusätzlich unter POSTEINGANG).
+- Bei den Funktionsmeldungen kommt ausnahmslos jedes Vorstandsmitglied aus der Liste unten vor (in der Reihenfolge der Mitschrift, sonst Hauptmann zuerst). Hatte jemand nichts, steht "- Keine Meldung", war jemand nicht da, "- Abwesend".
 - Sitzungsführung ist normalerweise der Hauptmann, Protokollführung der Schriftführer, sofern die Mitschrift nichts anderes sagt.
 
 Vorstandsmitglieder laut Mitgliederliste (Name – Funktionen):
