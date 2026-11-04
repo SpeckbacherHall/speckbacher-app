@@ -486,7 +486,7 @@ document.addEventListener("click", async ev => {
     t.disabled = true; t.textContent = "Wird geprüft …";
     const { data, error } = await db.functions.invoke("protokoll", { body: { mode: "check" } });
     t.disabled = false; t.textContent = "Azure prüfen";
-    return toast(error ? "Prüfung fehlgeschlagen." : `Spracherkennung: ${data.speech} · KI: ${data.ki}`);
+    return toast(error ? "Prüfung fehlgeschlagen." : `Spracherkennung: ${data.speech} · KI: ${data.ki}${data.ki_ressource ? ` (Ressource ${data.ki_ressource}, Bereitstellungen: ${data.ki_bereitstellungen})` : ""}`);
   }
   if (t.id === "prot-pdf-link" && t.getAttribute("aria-disabled")) { ev.preventDefault(); return; }
   if (t.id === "prot-pdf") { const p = protById(state.protOpen); const b = await protPdfBlob(p, p.status !== "final"); return download(`${protFileName(p)}.pdf`, b, "application/pdf"); }

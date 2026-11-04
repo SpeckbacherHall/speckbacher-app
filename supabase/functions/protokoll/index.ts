@@ -224,7 +224,17 @@ async function check() {
   try {
     const b = await chat([{ role: "user", content: "Antworte nur mit OK." }], 200, false, 40_000);
     out.ki = `ok (${b.model ?? DEPLOYMENT})`;
-  } catch (e) { out.ki = (e as Error).message; }
+  } catch (e) {
+    out.ki = (e as Error).message;
+    // Hilfe bei der Fehlersuche: welche Ressource ist eingetragen, welche Bereitstellungen gibt es dort?
+    try { out.ki_ressource = new URL(AOAI).host; } catch { out.ki_ressource = AOAI ? "ungültige Adresse" : "nicht eingetragen"; }
+    try {
+      const r = await fetch(`${AOAI}/openai/deployments?api-version=2022-12-01`, { headers: { "api-key": AOAI_KEY }, signal: AbortSignal.timeout(15_000) });
+      const b = await r.json().catch(() => ({}));
+      // deno-lint-ignore no-explicit-any
+      out.ki_bereitstellungen = r.ok ? ((b.data ?? []) as any[]).map((d) => `${d.id} (${d.model})`).join(", ") || "keine" : `Abfrage nicht möglich (${r.status})`;
+    } catch (err) { out.ki_bereitstellungen = `Abfrage nicht möglich: ${(err as Error).message}`; }
+  }
   return out;
 }
 
