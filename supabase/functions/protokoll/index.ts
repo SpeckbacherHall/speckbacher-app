@@ -150,21 +150,37 @@ async function boardList() {
   const { data } = await db.from("members").select("first_name,last_name,role_title").eq("is_board", true).eq("active", true).order("last_name");
   return (data ?? []).map((m) => `- ${m.first_name} ${m.last_name} – ${m.role_title ?? ""}`).join("\n");
 }
+// Aufruf an Azure OpenAI. Klassische Chat-Modelle (gpt-4o/4.1) nehmen temperature und max_tokens,
+// neuere Modelle (Reasoning, z. B. o-Serie, gpt-5) verlangen max_completion_tokens und lehnen temperature ab –
+// bei einem 400-Fehler wird daher die jeweils andere Variante probiert.
+// deno-lint-ignore no-explicit-any
+async function chat(messages: any[], maxTokens: number, asJson: boolean, timeoutMs: number) {
+  const base = { messages, ...(asJson ? { response_format: { type: "json_object" } } : {}) };
+  const attempts = [
+    { v: "2024-10-21", body: { ...base, temperature: 0.2, max_tokens: maxTokens } },
+    { v: "2025-04-01-preview", body: { ...base, max_completion_tokens: maxTokens, reasoning_effort: "low" } },
+    { v: "2025-04-01-preview", body: { ...base, max_completion_tokens: maxTokens } },
+  ];
+  const deadline = Date.now() + timeoutMs;
+  // deno-lint-ignore no-explicit-any
+  let last: any = null;
+  for (const a of attempts) {
+    const r = await fetch(`${AOAI}/openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${a.v}`, {
+      method: "POST", headers: { "api-key": AOAI_KEY, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(Math.max(5_000, deadline - Date.now())), body: JSON.stringify(a.body),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (r.ok) return out;
+    last = { status: r.status, message: out?.error?.message ?? "" };
+    if (r.status !== 400) break;
+  }
+  if (last?.status === 404) throw new Error(`Kein KI-Modell mit dem Namen „${DEPLOYMENT}“ bereitgestellt. Bitte in Azure AI Foundry ein Modell unter diesem Namen bereitstellen.`);
+  throw new Error(`KI-Anfrage fehlgeschlagen (${last?.status}): ${last?.message}`);
+}
 // deno-lint-ignore no-explicit-any
 async function writeDraft(p: any) {
   const user = `MITSCHRIFT:\n${p.notes?.trim() || "(keine Mitschrift)"}\n\nABSCHRIFT DER AUFNAHME:\n${p.transcript?.trim() || "(keine Aufnahme)"}`;
-  const r = await fetch(`${AOAI}/openai/deployments/${DEPLOYMENT}/chat/completions?api-version=2024-10-21`, {
-    method: "POST", headers: { "api-key": AOAI_KEY, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(130_000),
-    body: JSON.stringify({
-      messages: [{ role: "system", content: systemPrompt(await boardList(), dmy(p.meeting_date)) }, { role: "user", content: user }],
-      temperature: 0.2, max_tokens: 12000, response_format: { type: "json_object" },
-    }),
-  });
-  const out = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(r.status === 404
-    ? `Kein KI-Modell mit dem Namen „${DEPLOYMENT}“ bereitgestellt. Bitte in Azure AI Foundry ein Modell unter diesem Namen bereitstellen.`
-    : `KI-Entwurf fehlgeschlagen (${r.status}): ${out?.error?.message ?? ""}`);
+  const out = await chat([{ role: "system", content: systemPrompt(await boardList(), dmy(p.meeting_date)) }, { role: "user", content: user }], 16000, true, 135_000);
   const d = JSON.parse(out.choices?.[0]?.message?.content ?? "{}");
   const list = (v: unknown) => Array.isArray(v) ? v.join("\n") : (v ?? "") as string;
   return {
@@ -206,11 +222,9 @@ async function check() {
     out.speech = r.ok ? "ok" : /Standard/.test(b?.message ?? "") ? "Gratis-Tarif F0 – bitte auf S0 umstellen" : `Fehler ${r.status}: ${b?.message ?? ""}`;
   } catch (e) { out.speech = `Fehler: ${(e as Error).message}`; }
   try {
-    const r = await fetch(`${AOAI}/openai/deployments/${DEPLOYMENT}/chat/completions?api-version=2024-10-21`, { method: "POST",
-      headers: { "api-key": AOAI_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "Antworte nur mit OK." }], max_tokens: 5 }) });
-    const b = await r.json().catch(() => ({}));
-    out.ki = r.ok ? `ok (${b.model ?? DEPLOYMENT})` : r.status === 404 ? `Kein Modell „${DEPLOYMENT}“ bereitgestellt` : `Fehler ${r.status}: ${b?.error?.message ?? ""}`;
-  } catch (e) { out.ki = `Fehler: ${(e as Error).message}`; }
+    const b = await chat([{ role: "user", content: "Antworte nur mit OK." }], 200, false, 40_000);
+    out.ki = `ok (${b.model ?? DEPLOYMENT})`;
+  } catch (e) { out.ki = (e as Error).message; }
   return out;
 }
 

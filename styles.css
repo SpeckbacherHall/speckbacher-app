@@ -169,3 +169,4 @@ label.btn{cursor:pointer}
 .hint-box{border-left:4px solid var(--brass)}
 .hint-box ul{margin:4px 0 0;padding-left:20px}
 details.panel summary{cursor:pointer}
+.card.next-session{border:2px solid var(--brass)}

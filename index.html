@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Speckbacher">
 <link rel="preload" href="fonts/Karla.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=2026-11-04.1">
-<link rel="stylesheet" href="letter.css?v=2026-11-04.1">
+<link rel="stylesheet" href="styles.css?v=2026-11-04.2">
+<link rel="stylesheet" href="letter.css?v=2026-11-04.2">
 </head>
 <body>
 <div class="app">
@@ -25,6 +25,7 @@
     </div>
     <div class="seg" role="group" aria-label="Ansicht" id="roles" hidden>
       <button id="role-member" aria-pressed="true">Mitglied</button>
+      <button id="role-board" aria-pressed="false" hidden>Vorstand</button>
       <button id="role-admin" aria-pressed="false">Admin</button>
     </div>
   </header>
@@ -34,14 +35,15 @@
 
 <!-- supabase-js 2.45.4 liegt im Repository (vendor/), damit kein fremder Server Code in die App einschleusen kann -->
 <script src="vendor/supabase-2.45.4.js"></script>
-<script src="config.js?v=2026-11-04.1"></script>
-<script src="app.js?v=2026-11-04.1"></script>
-<script src="rundschreiben.js?v=2026-11-04.1"></script>
-<script src="geburtstage.js?v=2026-11-04.1"></script>
-<script src="fibel.js?v=2026-11-04.1"></script>
-<script src="abgleich.js?v=2026-11-04.1"></script>
-<script src="laufbahn.js?v=2026-11-04.1"></script>
-<script src="meinedaten.js?v=2026-11-04.1"></script>
-<script src="protokolle.js?v=2026-11-04.1"></script>
+<script src="config.js?v=2026-11-04.2"></script>
+<script src="app.js?v=2026-11-04.2"></script>
+<script src="rundschreiben.js?v=2026-11-04.2"></script>
+<script src="geburtstage.js?v=2026-11-04.2"></script>
+<script src="fibel.js?v=2026-11-04.2"></script>
+<script src="abgleich.js?v=2026-11-04.2"></script>
+<script src="laufbahn.js?v=2026-11-04.2"></script>
+<script src="meinedaten.js?v=2026-11-04.2"></script>
+<script src="protokolle.js?v=2026-11-04.2"></script>
+<script src="vorstand.js?v=2026-11-04.2"></script>
 </body>
 </html>

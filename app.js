@@ -148,8 +148,7 @@ function renderMember() {
   if (state.settings) return renderSettings();
   if (state.showHistory) return renderMyHistory();
   if (state.showMyData) return renderMyData();
-  if (state.showProtocols) return renderProtocols();
-  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button>${canProtocols() ? `<button class="btn" id="open-protocols">Protokolle</button>` : ""}<button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
+  let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
   <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
   <div class="filters" role="group" aria-label="Filter">
@@ -585,7 +584,7 @@ function renderNew(e = null) {
   return `${e ? `<button class="back" id="event-edit-cancel" type="button">‹ Zurück zum Termin</button>` : ""}
   <form class="panel" id="new-form">
     <h2>${e ? "Termin bearbeiten" : "Neuen Termin anlegen"}</h2>
-    <label for="f-kind">Art<select id="f-kind">${Object.entries(TYPES).map(([k, l]) => `<option value="${k}" ${e?.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label for="f-kind">Art<select id="f-kind">${Object.entries(TYPES).map(([k, l]) => `<option value="${k}" ${(e?.kind || state.newKind) === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
     <p class="rule">Vorstandstermine sehen nur Mitglieder mit dem Häkchen „Vorstand“.</p>
     <label for="f-title">Bezeichnung<input id="f-title" required placeholder="z. B. Herz-Jesu-Prozession" value="${v("title")}"></label>
     <div class="grid2">
@@ -615,13 +614,15 @@ function exportCsv(e) {
 /* ---------- Steuerung ---------- */
 function render() {
   if (!state.me) return;
-  const admin = !!state.me.is_admin;
-  $("#roles").hidden = !admin;
+  const admin = !!state.me.is_admin, board = !!state.me.is_board;
+  // Ansichten: Mitglied für alle, Vorstand nur für Vorstandsmitglieder, Admin nur für Admins
+  $("#roles").hidden = !admin && !board;
+  $("#role-admin").hidden = !admin;
+  $("#role-board").hidden = !board;
   $("#logout").hidden = false;
-  if (!admin) state.role = "member";
-  $("#role-member").setAttribute("aria-pressed", state.role === "member");
-  $("#role-admin").setAttribute("aria-pressed", state.role === "admin");
-  $("#view").innerHTML = state.role === "admin" ? renderAdmin() : renderMember();
+  if ((state.role === "admin" && !admin) || (state.role === "board" && !board)) state.role = "member";
+  for (const r of ["member", "board", "admin"]) $(`#role-${r}`).setAttribute("aria-pressed", state.role === r);
+  $("#view").innerHTML = state.role === "admin" ? renderAdmin() : state.role === "board" ? renderBoard() : renderMember();
 }
 
 document.addEventListener("click", async ev => {
@@ -629,8 +630,8 @@ document.addEventListener("click", async ev => {
   if (!t) return;
   const d = t.dataset;
   if (t.id === "logout") { await db.auth.signOut(); state.me = null; renderLogin(); return; }
-  if (t.id === "role-member" || t.id === "role-admin") {
-    state.role = t.id === "role-admin" ? "admin" : "member"; state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false; state.showMyData = false; state.showProtocols = false;
+  if (t.id === "role-member" || t.id === "role-admin" || t.id === "role-board") {
+    state.role = t.id.slice(5); state.openEvent = null; state.settings = false; state.letterId = null; state.showBirthdays = false; state.showFibel = false; state.fibelEdit = null; state.showHistory = false; state.showMyData = false; state.showProtocols = false;
     try { localStorage.setItem("sp-role", state.role); } catch (e) {}
     render(); scrollTo(0, 0); return;
   }
@@ -639,7 +640,7 @@ document.addEventListener("click", async ev => {
   if (d.no) return setResp(+d.no, "no");
   if (d.undo) return setResp(+d.undo, null);
   if (d.cal) { const e = state.events.find(x => x.id === +d.cal); download(`${e.event_date}_Ausrueckung.ics`, icsFor(e), "text/calendar"); return; }
-  if (d.atab) { state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; state.syncOpen = false; state.sync = null; render(); return; }
+  if (d.atab) { state.newKind = null; state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; state.syncOpen = false; state.sync = null; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
   if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
@@ -761,7 +762,7 @@ async function boot() {
     await db.auth.signOut();
     return renderLogin("Dein Konto ist keinem aktiven Mitglied zugeordnet. Bitte wende dich an den Schriftführer.");
   }
-  try { const r = localStorage.getItem("sp-role"); if (r === "admin" || r === "member") state.role = r; } catch (e) {}
+  try { const r = localStorage.getItem("sp-role"); if (["admin", "member", "board"].includes(r)) state.role = r; } catch (e) {}
   render();
   openFromHash();
   openChangesFromHash();

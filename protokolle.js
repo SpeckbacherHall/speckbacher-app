@@ -10,7 +10,6 @@ const PROT_STATE = {
   schreibt: "KI schreibt den Entwurf …", fertig: "Entwurf fertig", fehler: "Fehler"
 };
 const isBusy = p => ["hochgeladen", "transkription", "entwurf", "schreibt"].includes(p?.job_state);
-const canProtocols = () => state.me && (state.me.is_board || state.me.is_admin);
 state.protocols = null;
 
 /* ---------- Laden ---------- */
@@ -221,9 +220,8 @@ function renderProtocols() {
   const q = (state.protQuery || "").toLowerCase();
   const list = state.protocols.filter(p => !q || `${p.title} ${protDateLabel(p)} ${p.body} ${p.original_name || ""}`.toLowerCase().includes(q));
   const years = [...new Set(list.map(p => p.meeting_date.slice(0, 4)))];
-  return `<button class="back" id="prot-close">‹ Zu den Ausrückungen</button>
-  <div class="panel"><h2>Vorstandsprotokolle</h2>
-    <p class="fn">Alle Protokolle der Vorstandssitzungen. Nur für Mitglieder des Vorstands sichtbar.</p>
+  return `<div class="panel"><h2>Vorstandsprotokolle</h2>
+    <p class="fn">Alle Protokolle der Vorstandssitzungen.</p>
     ${admin ? `<div class="row-actions"><button class="btn yes" id="prot-new">Neues Protokoll</button><button class="btn" id="prot-import">Alte Protokolle hochladen</button><button class="btn ghost" id="prot-check">Azure prüfen</button></div>` : ""}
     <input class="search" id="prot-search" type="search" placeholder="Suchen (Datum, Stichwort …)" value="${esc(state.protQuery || "")}" aria-label="Protokolle durchsuchen" style="margin-top:10px">
   </div>
@@ -445,7 +443,7 @@ let protTimer = null;
 function setProtPolling(on) {
   if (on && !protTimer) protTimer = setInterval(async () => {
     const busy = (state.protocols || []).filter(isBusy);
-    if (!busy.length || !state.showProtocols) { clearInterval(protTimer); protTimer = null; return; }
+    if (!busy.length || state.role !== "board" || state.boardTab !== "prot") { clearInterval(protTimer); protTimer = null; return; }
     const before = busy.map(p => p.job_state).join();
     await loadProtocols();
     const after = (state.protocols || []).filter(p => busy.some(b => b.id === p.id)).map(p => p.job_state).join();
@@ -456,8 +454,8 @@ function setProtPolling(on) {
 /* ---------- Steuerung ---------- */
 function openProtocolsFromHash() {
   const m = location.hash.match(/^#prot-(\d+)$/);
-  if (!m || !canProtocols()) return;
-  state.role = "member"; state.showProtocols = true; state.protocols = null;
+  if (!m || !state.me?.is_board) return;
+  state.role = "board"; state.boardTab = "prot"; state.protocols = null;
   const id = +m[1];
   loadProtocols().then(() => { const p = protById(id); if (state.me.is_admin && p && p.status !== "final") state.protEdit = id; else state.protOpen = id; render(); });
 }
@@ -467,8 +465,6 @@ document.addEventListener("click", async ev => {
   const t = ev.target.closest("button, a");
   if (!t || !state.me) return;
   const d = t.dataset;
-  if (t.id === "open-protocols") { state.showProtocols = true; state.protOpen = null; state.protEdit = null; state.protocols = null; render(); scrollTo(0, 0); return; }
-  if (t.id === "prot-close") { state.showProtocols = false; if (location.hash.startsWith("#prot-")) history.replaceState(null, "", location.pathname); render(); return; }
   if (d.prot) { const p = protById(+d.prot); if (state.me.is_admin && p.status !== "final") state.protEdit = p.id; else state.protOpen = p.id; state.protConfirmDelete = false; state.protPreview = false; render(); scrollTo(0, 0); return; }
   if (t.id === "prot-back") { state.protOpen = null; render(); return; }
   if (t.id === "prot-new") { state.protEdit = "new"; render(); scrollTo(0, 0); return; }
