@@ -121,7 +121,7 @@ const isMp3 = (p: any) => /mpeg|mp3/i.test(p.audio_type ?? "") || /\.mp3$/i.test
 // Mehrteilige Aufnahmen gehen nur bei MP3: MP3 besteht aus unabhängigen Frames, jeder Teil (45 MB,
 // bei 320 kbit/s ca. 20 Minuten) ist für sich abspielbar und wird als eigene Datei transkribiert.
 // deno-lint-ignore no-explicit-any
-async function startTranscription(p: any) {
+async function startTranscription(p: any, stereo = false) {
   const id = p.id as number;
   let contentUrls: string[];
   if (p.audio_parts === 1 || isMp3(p)) {
@@ -136,7 +136,8 @@ async function startTranscription(p: any) {
     method: "POST", headers: speechHeaders(),
     body: JSON.stringify({
       displayName: `Speckbacher Protokoll ${id}`, locale: "de-AT", contentUrls,
-      properties: { diarizationEnabled: true, diarization: { speakers: { minCount: 1, maxCount: 15 } },
+      // Sprechertrennung geht nur bei Mono-Aufnahmen; bei Stereo wird nur der erste Kanal ohne Sprechertrennung erkannt
+      properties: { ...(stereo ? { channels: [0] } : { diarizationEnabled: true, diarization: { speakers: { minCount: 1, maxCount: 15 } } }),
         punctuationMode: "DictatedAndAutomatic", profanityFilterMode: "None", timeToLiveHours: 48 },
     }),
   });
@@ -159,8 +160,9 @@ function transcriptText(results: any[]) {
     for (const ph of (result.recognizedPhrases ?? []) as any[]) {
       const text = ph.nBest?.[0]?.display;
       if (!text) continue;
-      const sp = ph.speaker ?? 0;
-      if (sp !== last) { lines.push(`[${clock(offset + (ph.offsetInTicks ?? 0))}] Sprecher ${sp}: ${text}`); last = sp; }
+      const at = `[${clock(offset + (ph.offsetInTicks ?? 0))}]`;
+      if (ph.speaker === undefined) { lines.push(`${at} ${text}`); continue; }
+      if (ph.speaker !== last) { lines.push(`${at} Sprecher ${ph.speaker}: ${text}`); last = ph.speaker; }
       else lines[lines.length - 1] += " " + text;
     }
     offset += Number(result.durationInTicks ?? 0);
@@ -170,10 +172,11 @@ function transcriptText(results: any[]) {
 const partNo = (src: string) => Number(/part-(\d+)/.exec(src)?.[1] ?? 0);
 // deno-lint-ignore no-explicit-any
 async function checkTranscription(p: any) {
-  const r = await fetch(p.job_ref, { headers: speechHeaders() });
+  const job = String(p.job_ref).split("#")[0];
+  const r = await fetch(job, { headers: speechHeaders() });
   const t = await r.json().catch(() => ({}));
   if (t.status === "Succeeded") {
-    const files = await (await fetch(`${p.job_ref}/files`, { headers: speechHeaders() })).json();
+    const files = await (await fetch(`${job}/files`, { headers: speechHeaders() })).json();
     // deno-lint-ignore no-explicit-any
     const results: any[] = [];
     // deno-lint-ignore no-explicit-any
@@ -186,9 +189,29 @@ async function checkTranscription(p: any) {
     const expected = isMp3(p) && p.audio_parts > 1 ? p.audio_parts : 1;
     const transcript = (results.length < expected ? `(Hinweis: Nur ${results.length} von ${expected} Teilen der Aufnahme konnten erkannt werden.)\n` : "") + transcriptText(results);
     await db.from("protocols").update({ transcript, job_state: "entwurf", job_error: null }).eq("id", p.id);
-    await fetch(p.job_ref, { method: "DELETE", headers: speechHeaders() });
+    await fetch(job, { method: "DELETE", headers: speechHeaders() });
   } else if (t.status === "Failed") {
-    await db.from("protocols").update({ job_state: "fehler", job_error: `Spracherkennung fehlgeschlagen: ${t.properties?.error?.message ?? "unbekannt"}` }).eq("id", p.id);
+    // Genauere Ursache aus dem Bericht je Datei holen (ohne Adressen, die enthalten Zugangsschlüssel)
+    let detail = `${t.properties?.error?.message ?? "unbekannt"}${t.properties?.error?.code ? ` [${t.properties.error.code}]` : ""}`;
+    try {
+      const files = await (await fetch(`${job}/files`, { headers: speechHeaders() })).json();
+      // deno-lint-ignore no-explicit-any
+      const rep = (files.values ?? []).find((v: any) => v.kind === "TranscriptionReport");
+      if (rep) {
+        const j = await (await fetch(rep.links.contentUrl)).json();
+        // deno-lint-ignore no-explicit-any
+        const d = ((j.details ?? []) as any[]).filter((x) => x.status !== "Succeeded").map((x) => [x.errorKind, x.errorMessage].filter(Boolean).join(": "));
+        if (d.length) detail += ` – ${[...new Set(d)].join("; ")}`;
+      }
+    } catch { /* Bericht nicht verfügbar */ }
+    // Stereo-Aufnahme: einmal ohne Sprechertrennung neu starten
+    if (/BadChannelConfiguration|Stereo/i.test(detail) && t.properties?.diarizationEnabled !== false && !p.job_ref?.includes("#stereo")) {
+      await fetch(job, { method: "DELETE", headers: speechHeaders() });
+      const ref = await startTranscription(p, true);
+      await db.from("protocols").update({ job_state: "transkription", job_ref: `${ref}#stereo`, job_error: null, job_started_at: new Date().toISOString() }).eq("id", p.id);
+      return;
+    }
+    await db.from("protocols").update({ job_state: "fehler", job_error: `Spracherkennung fehlgeschlagen: ${detail}` }).eq("id", p.id);
   } else if (Date.now() - Date.parse(p.job_started_at) > 12 * 3600e3) {
     await db.from("protocols").update({ job_state: "fehler", job_error: "Die Spracherkennung hat nach 12 Stunden kein Ergebnis geliefert." }).eq("id", p.id);
   }
