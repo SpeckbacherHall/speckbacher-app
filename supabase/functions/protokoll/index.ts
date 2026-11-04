@@ -1,7 +1,7 @@
 // Edge Function "protokoll": Vorstandsprotokolle aus Mitschrift und Audioaufnahme.
 // - POST {mode:"start", id}   (Admin): startet die Spracherkennung (Azure Batch) bzw. direkt den Entwurf
 // - POST {mode:"poll"}        (Zeitplan, x-cron-secret): fragt Transkriptionen ab und schreibt Entwürfe (Azure OpenAI)
-// - POST {mode:"notify", id}  (Admin): Push an alle Vorstandsmitglieder, dass ein Protokoll im Archiv liegt
+// - POST {mode:"notify", id | ids} (Admin): Push an alle Vorstandsmitglieder, dass ein bzw. mehrere Protokolle im Archiv liegen
 // - POST {mode:"check"}       (Admin): prüft die Azure-Zugänge
 // - GET  ?audio=<id>&t=<sig>  (Azure): liefert die in Teilen gespeicherte Aufnahme als eine Datei aus
 // Geheimnisse: AZURE_SPEECH_ENDPOINT/KEY, AZURE_OPENAI_ENDPOINT/KEY, optional AZURE_OPENAI_DEPLOYMENT (Standard "protokoll").
@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   if ((req.method === "GET" || req.method === "HEAD") && url.searchParams.has("audio")) return serveAudio(req, url);
   if (req.method !== "POST") return json({ error: "Nicht erlaubt." }, 405);
-  let body: { mode?: string; id?: number } = {};
+  let body: { mode?: string; id?: number; ids?: number[] } = {};
   try { body = await req.json(); } catch { /* leer */ }
 
   if (body.mode === "poll") {
@@ -248,7 +248,16 @@ Deno.serve(async (req) => {
 
   if (body.mode === "check") return json(await check());
 
-  const { data: p } = await db.from("protocols").select("*").eq("id", body.id ?? 0).maybeSingle();
+  // Mehrere hochgeladene Protokolle: eine einzige Push-Nachricht an den Vorstand
+  if (body.mode === "notify" && Array.isArray(body.ids) && body.ids.length > 1) {
+    const { data: list } = await db.from("protocols").select("id,title,meeting_date,status").in("id", body.ids).eq("status", "final").order("meeting_date", { ascending: false });
+    if (!list?.length) return json({ error: "Keine finalen Protokolle." }, 400);
+    const { data: board } = await db.from("members").select("id").eq("is_board", true).eq("active", true);
+    const sent = await push((board ?? []).map((m) => m.id), { title: "Neue Vorstandsprotokolle", body: `${list.length} Protokolle wurden ins Archiv gestellt (zuletzt: ${list[0].title} vom ${dmy(list[0].meeting_date)}).`, url: `./#prot-${list[0].id}`, tag: "prot-import" });
+    return json({ sent });
+  }
+
+  const { data: p } = await db.from("protocols").select("*").eq("id", body.id ?? body.ids?.[0] ?? 0).maybeSingle();
   if (!p) return json({ error: "Protokoll nicht gefunden." }, 404);
 
   if (body.mode === "start") {

@@ -416,13 +416,17 @@ function renderProtImport() {
   </div>
   ${rows.length ? `<div class="panel" style="margin-top:12px"><table><tbody>${rows.map((r, i) => `<tr><td>${esc(r.file.name)}<br><span class="fn">${r.dup ? "schon im Archiv – wird übersprungen" : r.meeting_date ? `${r.number ? `Nr. ${r.number} · ` : ""}${r.date_is_month ? esc(dt(r.meeting_date).toLocaleDateString("de-AT", { month: "long", year: "numeric" })) : dmy(r.meeting_date)}` : "Datum nicht erkannt"}</span></td>
       <td style="width:150px">${r.dup ? "" : `<input type="date" data-imp-date="${i}" value="${r.meeting_date || ""}" aria-label="Datum">`}</td></tr>`).join("")}</tbody></table>
+    <label class="check-line" for="imp-notify"><input id="imp-notify" type="checkbox" ${rows.filter(r => !r.dup).length <= 2 ? "checked" : ""}> Vorstand per Push informieren</label>
+    <p class="rule">Bei mehreren Dateien kommt eine einzige Nachricht. Beim Nachtragen alter Jahrgänge am besten aus lassen.</p>
     <div id="imp-progress" class="fn" aria-live="polite"></div>
     <div class="row-actions"><button class="btn yes" id="prot-import-go">${rows.filter(r => !r.dup).length} Protokolle hochladen</button></div></div>` : ""}`;
 }
 async function runImport() {
   const rows = state.protImport.rows.filter(r => !r.dup);
   if (rows.some(r => !r.meeting_date)) return toast("Bitte bei allen Dateien ein Datum eintragen.");
+  const notify = $("#imp-notify")?.checked;
   let ok = 0, failed = 0;
+  const done = [];
   for (const [i, r] of rows.entries()) {
     $("#imp-progress").textContent = `Lade hoch … ${i + 1} von ${rows.length}`;
     const { data: p, error } = await db.from("protocols").insert({ meeting_date: r.meeting_date, date_is_month: r.date_is_month, number: r.number,
@@ -432,10 +436,16 @@ async function runImport() {
     const { error: up } = await db.storage.from("vorstand").upload(path, r.file, { contentType: "application/pdf", upsert: true });
     if (up) { await db.from("protocols").delete().eq("id", p.id); failed++; continue; }
     await db.from("protocols").update({ pdf_path: path }).eq("id", p.id);
+    done.push(p.id);
     ok++;
   }
+  let sent = null;
+  if (notify && done.length) {
+    const r = await db.functions.invoke("protokoll", { body: done.length === 1 ? { mode: "notify", id: done[0] } : { mode: "notify", ids: done } });
+    sent = r.error ? -1 : r.data?.sent ?? 0;
+  }
   state.protImport = null; await loadProtocols(); render(); scrollTo(0, 0);
-  toast(`${ok} Protokolle hochgeladen${failed ? `, ${failed} fehlgeschlagen` : ""}.`);
+  toast(`${ok} Protokolle hochgeladen${failed ? `, ${failed} fehlgeschlagen` : ""}.${sent === -1 ? " Die Push-Nachricht konnte nicht verschickt werden." : sent !== null ? ` Vorstand informiert (${sent}).` : ""}`);
 }
 
 /* ---------- Status laufender Entwürfe automatisch nachladen ---------- */
