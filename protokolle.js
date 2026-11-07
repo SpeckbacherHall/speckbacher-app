@@ -238,7 +238,7 @@ function renderProtView() {
   if (!p) { state.protOpen = null; return renderProtocols(); }
   const admin = state.me.is_admin;
   setTimeout(() => prepPdfLink(p), 0);
-  return `<button class="back" id="prot-back">‹ Alle Protokolle</button>
+  return `<button class="back" id="prot-back">${ico("arrow_back")}Alle Protokolle</button>
   <div class="row-actions" style="margin-bottom:10px">
     ${p.pdf_path ? `<a class="btn yes" id="prot-pdf-link" href="#" aria-disabled="true">PDF wird vorbereitet …</a>` : p.body ? `<button class="btn yes" id="prot-pdf">Als PDF</button>` : ""}
     ${admin && p.source === "app" ? `<button class="btn" id="prot-edit">${p.status === "final" ? "Wieder öffnen und bearbeiten" : "Bearbeiten"}</button>` : ""}
@@ -271,7 +271,7 @@ function renderProtEditor() {
   if (!isNew && !p) { state.protEdit = null; return renderProtocols(); }
   if (isNew) {
     const s = suggestMeeting();
-    return `<button class="back" id="prot-edit-cancel" type="button">‹ Zurück</button>
+    return `<button class="back" id="prot-edit-cancel" type="button">${ico("arrow_back")}Zurück</button>
     <form class="panel" id="prot-new-form">
       <h2>Neues Protokoll</h2>
       <div class="grid2">${field("pn-date", "Sitzungsdatum", s.date, "date", "required")}${field("pn-number", "Nummer im Jahr", s.number, "number", 'min="1" step="1"')}</div>
@@ -286,14 +286,14 @@ function renderProtEditor() {
   }
   if (isBusy(p)) {
     setProtPolling(true);
-    return `<button class="back" id="prot-edit-cancel" type="button">‹ Zurück</button>
+    return `<button class="back" id="prot-edit-cancel" type="button">${ico("arrow_back")}Zurück</button>
     <div class="panel"><h2>${esc(p.title)} · ${esc(protDateLabel(p))}</h2>
       <p><span class="status">${esc(PROT_STATE[p.job_state])}</span></p>
       <p class="fn">Das dauert je nach Länge der Aufnahme einige Minuten. Du kannst die App schließen – du bekommst eine Push-Nachricht, sobald der Entwurf fertig ist.</p>
       <div class="row-actions"><button class="btn ghost" id="prot-job-cancel">Abbrechen</button></div>
     </div>`;
   }
-  return `<button class="back" id="prot-edit-cancel" type="button">‹ Zurück</button>
+  return `<button class="back" id="prot-edit-cancel" type="button">${ico("arrow_back")}Zurück</button>
   ${p.job_state === "fehler" ? `<div class="panel danger-box"><p><b>Der Entwurf konnte nicht erstellt werden.</b></p><p class="fn">${esc(p.job_error || "")}</p>
     <div class="row-actions"><button class="btn" id="prot-regen">Erneut versuchen</button></div></div>` : ""}
   ${p.hints ? `<div class="panel hint-box"><h4 class="sec-title">Hinweise der KI – bitte prüfen</h4><ul>${lines(p.hints).map(h => `<li>${esc(h)}</li>`).join("")}</ul></div>` : ""}
@@ -414,7 +414,7 @@ function parseProtName(name) {
 }
 function renderProtImport() {
   const rows = state.protImport.rows || [];
-  return `<button class="back" id="prot-import-close">‹ Alle Protokolle</button>
+  return `<button class="back" id="prot-import-close">${ico("arrow_back")}Alle Protokolle</button>
   <div class="panel"><h2>Alte Protokolle hochladen</h2>
     <p class="fn">PDF-Dateien auswählen (mehrere auf einmal möglich, z. B. ein ganzer Jahresordner). Datum und Nummer werden aus dem Dateinamen gelesen, etwa „08_Protokoll_Vorstandssitzung_28.09.2026.pdf“ oder „01_Jänner_2025_Vorstandssitzung_Protokoll.pdf“. Word-Dateien bitte vorher als PDF speichern.</p>
     <label class="btn" for="prot-files" style="align-self:flex-start">PDF-Dateien wählen<input id="prot-files" type="file" accept="application/pdf,.pdf" multiple hidden></label>

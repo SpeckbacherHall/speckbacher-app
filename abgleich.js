@@ -94,7 +94,7 @@ function analyse(rows) {
 
 function renderSync() {
   const a = state.sync;
-  let html = `<button class="back" id="sync-close" type="button">‹ Alle Mitglieder</button>
+  let html = `<button class="back" id="sync-close" type="button">${ico("arrow_back")}Alle Mitglieder</button>
   <div class="panel"><h2>Abgleich mit dem BTSK-Export</h2>
     <p class="fn">Mitgliederliste im BTSK-Portal als CSV exportieren und hier hochladen. Die App zeigt, was sich unterscheidet. Übernommen wird nur, was du anhakst. Gewehrnummern, Vorstand, Admin und App-Zugänge bleiben unverändert.</p>
     <label class="btn" for="sync-file" style="align-self:flex-start">CSV-Datei wählen<input id="sync-file" type="file" accept=".csv,text/csv" hidden></label>

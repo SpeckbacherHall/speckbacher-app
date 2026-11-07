@@ -36,7 +36,7 @@ function renderBirthdays() {
   const today = list.filter(x => x.iso === todayIso());
   const soon = list.filter(x => { const n = daysUntil(x.iso); return n > 0 && n <= 30; });
   const byMonth = MONTHS.map((name, i) => ({ name, rows: (state.birthdays || []).filter(b => b.birth_month === i + 1) }));
-  return `<button class="back" id="bd-close">‹ Zu den Ausrückungen</button>
+  return `<button class="back" id="bd-close">${ico("arrow_back")}Zu den Ausrückungen</button>
   ${today.length ? `<div class="panel bd-today"><h2>Heute hat Geburtstag</h2>
     ${today.map(({ b, iso }) => `<p class="bd-big">${esc(b.first_name)} ${esc(b.last_name)}${ageOn(b, iso) !== null ? ` <span class="fn">wird ${ageOn(b, iso)}</span>` : ""}</p>`).join("")}</div>` : ""}
   <div class="panel" style="margin-top:12px"><h2>Die nächsten 30 Tage</h2>

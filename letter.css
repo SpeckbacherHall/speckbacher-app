@@ -31,10 +31,9 @@
 .letter-screen .l-foot{margin-top:20px; padding-top:12px; border-top:1px solid #ddd; font-size:10px; grid-template-columns:1fr}
 .nl-card .date .d{font-size:26px; color:var(--loden)}
 .nl-card{width:100%; text-align:left; cursor:pointer; font:inherit; color:inherit; margin-bottom:6px}
-form.panel textarea{padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:15px/1.4 var(--body); width:100%; resize:vertical}
-form.panel label.nl-ev{align-items:flex-start; padding:6px 0; border-top:1px solid var(--line)}
+form.panel label.nl-ev{align-items:flex-start; padding:12px 0; border-top:1px solid var(--line)}
 form.panel label.nl-ev input{margin-top:3px; flex:none}
-.sec-title{font-family:var(--display); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin:10px 0 0}
+.sec-title{font:500 16px/24px var(--md-ref-typeface); letter-spacing:.15px; margin:12px 0 0}
 #print-root{display:none}
 
 /* Druck: ein Brief je Person, A4. Logo auf der ersten Seite, Fußzeile auf jeder Seite.

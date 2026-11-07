@@ -9,7 +9,7 @@ const changeValue = (k, v) => (v === null || v === undefined || v === "" ? "–"
 
 function renderMyData() {
   const p = priv(state.me);
-  return `<button class="back" id="mydata-close">‹ Zu den Ausrückungen</button>
+  return `<button class="back" id="mydata-close">${ico("arrow_back")}Zu den Ausrückungen</button>
   <form class="panel" id="mydata-form">
     <h2>Meine Daten</h2>
     <p class="fn">Was du hier änderst, gilt sofort. Der Schriftführer wird automatisch verständigt und trägt es auch beim Bund der Tiroler Schützenkompanien nach.</p>
@@ -18,7 +18,8 @@ function renderMyData() {
     ${field("md-address", "Adresse (Straße, PLZ Ort)", p.address, "text", 'autocomplete="street-address"')}
     ${field("md-birthday", "Geburtstag", p.birthday, "date")}
     <label for="md-email">E-Mail (Anmeldung)<input id="md-email" type="email" value="${esc(p.email ?? "")}" disabled></label>
-    <label for="md-note">Nachricht an den Schriftführer <span class="fn">(optional, z. B. neue E-Mail-Adresse oder Namensänderung)</span><textarea id="md-note" rows="3"></textarea></label>
+    ${p.email ? `<label class="check" for="md-nlmail"><input type="checkbox" id="md-nlmail" ${p.newsletter_email ? "checked" : ""}><span>Rundschreiben zusätzlich per E-Mail bekommen (mit PDF im Anhang)</span></label>` : ""}
+    <label for="md-note">Nachricht an den Schriftführer (optional, z. B. neue E-Mail-Adresse oder Namensänderung)<textarea id="md-note" rows="3"></textarea></label>
     <div class="row-actions"><button class="btn yes" type="submit" id="md-submit">Speichern</button><button class="btn ghost" type="button" id="mydata-close2">Abbrechen</button></div>
   </form>`;
 }
@@ -27,7 +28,8 @@ async function saveMyData() {
   const p = priv(state.me);
   const val = id => $(id).value.trim() || null;
   const next = { phone: val("#md-phone"), phone_private: val("#md-phone-private"), phone_work: val("#md-phone-work"), address: val("#md-address"), birthday: val("#md-birthday") };
-  const diff = Object.fromEntries(Object.entries(next).filter(([k, v]) => (p[k] ?? null) !== v));
+  if ($("#md-nlmail")) next.newsletter_email = $("#md-nlmail").checked;
+  const diff = Object.fromEntries(Object.entries(next).filter(([k, v]) => (k === "newsletter_email" ? !!p[k] : (p[k] ?? null)) !== v));
   const note = val("#md-note");
   if (!Object.keys(diff).length && !note) { toast("Es wurde nichts geändert."); $("#md-submit").disabled = false; return; }
   if (Object.keys(diff).length) {

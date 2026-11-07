@@ -65,7 +65,7 @@ function renderMyHistory() {
     m.rank && `Rang: ${esc(m.rank)}`,
     m.role_title && `Funktion: ${esc(m.role_title)}`
   ].filter(Boolean);
-  return `<button class="back" id="hist-close">‹ Zu den Ausrückungen</button>
+  return `<button class="back" id="hist-close">${ico("arrow_back")}Zu den Ausrückungen</button>
   <div class="panel"><h2>${esc(fullName(m))}</h2>${facts.map(f => `<p>${f}</p>`).join("") || `<p class="empty">Keine Angaben.</p>`}</div>
   ${historyPanel(m.id)}`;
 }

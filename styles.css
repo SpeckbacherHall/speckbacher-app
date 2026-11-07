@@ -325,7 +325,7 @@ form.panel input:not([type=checkbox]):not([type=file]):hover,form.panel select:h
 form.panel input:not([type=checkbox]):not([type=file]):focus,form.panel select:focus,textarea:focus,.search:focus{outline:none;border-color:var(--md-sys-color-primary);box-shadow:inset 0 0 0 1px var(--md-sys-color-primary)}
 form.panel select{appearance:none;-webkit-appearance:none;padding-right:44px;cursor:pointer}
 form.panel label:has(> select){position:relative}
-form.panel label:has(> select)::after{content:"";position:absolute;right:12px;bottom:16px;width:24px;height:24px;background:var(--md-sys-color-on-surface-variant);
+form.panel label:has(> select)::after{content:"";position:absolute;right:12px;top:16px;width:24px;height:24px;background:var(--md-sys-color-on-surface-variant);
   -webkit-mask:var(--md-icon-drop) center/contain no-repeat;mask:var(--md-icon-drop) center/contain no-repeat;pointer-events:none}
 form.panel select option{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface)}
 input[type=date],input[type=time],input[type=month],input[type=datetime-local]{color-scheme:light dark}
@@ -364,3 +364,70 @@ form.panel label.check,.check-line{flex-direction:row;align-items:flex-start;gap
 .prot-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.45}
 .prot-raw{max-height:340px;overflow:auto;white-space:pre-wrap}
 .body > .pill,.body > .type{align-self:flex-start}
+
+/* ---------- Textfelder mit schwebender Beschriftung (felder.js) ---------- */
+body{--tf-bg:var(--md-sys-color-surface)}
+.panel,.card{--tf-bg:var(--md-sys-color-surface-container-low)}
+label.tf{display:block;position:relative;margin-top:4px;color:var(--md-sys-color-on-surface-variant)}
+.tf > .tf-label{position:absolute;left:12px;top:16px;padding:0 4px;max-width:calc(100% - 32px);z-index:1;pointer-events:none;
+  font:400 16px/24px var(--md-ref-typeface);letter-spacing:.5px;color:var(--md-sys-color-on-surface-variant);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:2px;
+  transition:top .15s var(--md-sys-motion-standard),font-size .15s var(--md-sys-motion-standard),line-height .15s,color .15s}
+.tf:focus-within > .tf-label,.tf.tf-fixed > .tf-label,.tf.tf-filled > .tf-label,
+.tf:has(> input:not(:placeholder-shown)) > .tf-label,.tf:has(> textarea:not(:placeholder-shown)) > .tf-label{
+  top:-8px;font-size:12px;line-height:16px;letter-spacing:.4px;background:var(--tf-bg);max-width:calc(100% - 24px)}
+.tf:focus-within > .tf-label{color:var(--md-sys-color-primary)}
+.tf-required > .tf-label::after{content:"*"}
+.tf > input::placeholder,.tf > textarea::placeholder{color:transparent!important}
+.tf:focus-within > input::placeholder,.tf:focus-within > textarea::placeholder{color:var(--md-sys-color-on-surface-variant)!important}
+.tf > textarea{display:block}
+.tf-support{display:block;padding:4px 16px 0;font:400 12px/16px var(--md-ref-typeface);letter-spacing:.4px;color:var(--md-sys-color-on-surface-variant)}
+.tf:has(> :user-invalid) > :is(input,textarea,select){border-color:var(--md-sys-color-error);box-shadow:inset 0 0 0 1px var(--md-sys-color-error)}
+.tf:has(> :user-invalid) > .tf-label{color:var(--md-sys-color-error)}
+.tf:has(> :disabled){opacity:.38}
+
+/* ---------- Symbolschaltflächen (Icon buttons) ---------- */
+.ico{width:24px;height:24px;fill:currentColor;flex:none;display:block}
+.icon-btn{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;padding:0;
+  border:0;border-radius:var(--md-sys-shape-corner-full);background:transparent;color:var(--md-sys-color-on-surface-variant);cursor:pointer;text-decoration:none}
+.icon-btn::after{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;transition:opacity .15s linear;z-index:-1}
+.icon-btn:hover:not(:disabled)::after{opacity:.08}
+.icon-btn:is(:focus-visible,:active):not(:disabled)::after{opacity:.1}
+.icon-btn:disabled{opacity:.38;cursor:default}
+.icon-btn[aria-busy="true"]{opacity:.6;cursor:progress}
+/* 48px Berührfläche nach M3, auch wenn das Symbol nur 40px groß ist */
+.icon-btn::before{content:"";position:absolute;inset:-4px}
+.icon-btn.filled{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary)}
+.icon-btn.tonal{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.icon-btn.outlined{border:1px solid var(--md-sys-color-outline-variant);color:var(--md-sys-color-on-surface-variant)}
+.icon-btn.danger{color:var(--md-sys-color-error)}
+.icon-btn.outlined.danger{border-color:var(--md-sys-color-error)}
+.back .ico,.btn .ico{width:18px;height:18px}
+.back{padding-left:8px}
+#logout{margin-right:-8px}
+
+/* ---------- Hinweis für Marketenderinnen ---------- */
+.note-box{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:var(--md-sys-shape-corner-small);
+  background:var(--md-ext-fahne-container);color:var(--md-ext-on-fahne-container);font:400 14px/20px var(--md-ref-typeface);letter-spacing:.25px}
+.note-box b{font-weight:500;font-size:12px;line-height:16px;letter-spacing:.5px}
+
+/* ---------- Mitgliederliste ---------- */
+.m-list{list-style:none;margin:0 -16px;padding:0}
+.m-row{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--md-sys-color-outline-variant)}
+.m-row:first-child{border-top:0}
+.m-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.m-name{display:block}
+.m-main .name-btn{font:400 16px/24px var(--md-ref-typeface);letter-spacing:.5px;text-decoration:none}
+.m-main .fn{overflow-wrap:anywhere}
+.m-acts{display:flex;gap:4px;flex:none}
+.m-access{list-style:none;padding:0 16px 12px}
+#phone-list{overflow:hidden}
+
+/* ---------- Rundschreiben: Versand ---------- */
+.send-box{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--md-sys-color-outline-variant)}
+.send-box h3{margin:0;font:500 16px/24px var(--md-ref-typeface);letter-spacing:.15px}
+.send-box .ico-title{display:flex;align-items:center;gap:8px}
+.send-stat{font:400 14px/20px var(--md-ref-typeface);color:var(--md-sys-color-on-surface-variant)}
+.grid2 > *{min-width:0}
+form.panel input,form.panel select,textarea{min-width:0;max-width:100%}
+.tf.tf-fixed > .tf-label{max-width:calc(100% - 24px)}

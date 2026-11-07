@@ -26,7 +26,7 @@ const dmy = iso => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; 
 const fullDate = iso => dt(iso).toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
 /* ---------- Brief (Bildschirm und Druck) ---------- */
-function letterItem(e) {
+function letterItem(e, m) {
   const time = e.muster_time && e.start_time ? `Antreten ${hm(e.muster_time)} Uhr | Beginn ${hm(e.start_time)} Uhr`
     : e.start_time ? `${hm(e.start_time)} Uhr` : e.muster_time ? `Antreten ${hm(e.muster_time)} Uhr` : "Informationen folgen";
   return `<section class="l-item">
@@ -34,6 +34,7 @@ function letterItem(e) {
     <p>${esc(fullDate(e.event_date))} | ${esc(time)} | ${esc(e.place)}</p>
     ${e.notes && !(time === "Informationen folgen" && e.notes === "Informationen folgen") ? `<p>${esc(e.notes)}</p>` : ""}
     ${e.dress ? `<p>Adjustierung: ${esc(e.dress)}</p>` : ""}
+    ${e.note_marketenderinnen && isMk(m) ? `<p>Marketenderinnen: ${esc(e.note_marketenderinnen)}</p>` : ""}
     <p>${PARTICIPATION[e.kind] || ""}</p>
   </section>`;
 }
@@ -53,8 +54,8 @@ function letterHtml(nl, m, withAddress = true, forPrint = false) {
       <h1 class="l-title"><b>RUND</b>SCHREIBEN</h1>
       <p>${female ? "Liebe" : "Lieber"} ${esc(m.first_name)},</p>
       ${paras(nl.intro)}
-      ${items.map(letterItem).join("")}
-      ${preview.length ? `<h2 class="l-sub">VORSCHAU ${esc(nlMonthName(firstOfMonth(nl.month, 1)).toUpperCase())}</h2>${preview.map(letterItem).join("")}` : ""}
+      ${items.map(e => letterItem(e, m)).join("")}
+      ${preview.length ? `<h2 class="l-sub">VORSCHAU ${esc(nlMonthName(firstOfMonth(nl.month, 1)).toUpperCase())}</h2>${preview.map(e => letterItem(e, m)).join("")}` : ""}
       ${nl.free_text ? `<div class="l-free">${paras(nl.free_text)}</div>` : ""}
       <p class="l-greet">Schützen Heil</p>
       <p class="l-sign">${esc(nl.signature).replace(/\n/g, "<br>")}</p>
@@ -82,6 +83,129 @@ function printLetters(nl, members) {
 const postRecipients = () => state.members.filter(m => priv(m).needs_post);
 const noAppRecipients = () => state.members.filter(m => !m.user_id);
 
+/* ---------- PDF (Anhang für E-Mail und zum Teilen) ---------- */
+// Allgemeine Fassung ohne Anschrift, Anrede an alle; Marketenderinnen-Hinweise stehen bei den Terminen dabei.
+function nlEventsOf(nl) {
+  const byId = id => state.events.find(e => e.id === id);
+  const sort = l => l.map(byId).filter(Boolean).sort((a, b) => a.event_date.localeCompare(b.event_date));
+  return { items: sort(nl.event_ids), preview: sort(nl.preview_ids) };
+}
+function nlPdfDoc(nl, logo) {
+  const { items, preview } = nlEventsOf(nl);
+  const paras = t => (t || "").split(/\n{2,}/).map(x => x.trim()).filter(Boolean).map(x => ({ text: x, margin: [0, 0, 0, 7] }));
+  const item = e => {
+    const time = e.muster_time && e.start_time ? `Antreten ${hm(e.muster_time)} Uhr | Beginn ${hm(e.start_time)} Uhr`
+      : e.start_time ? `${hm(e.start_time)} Uhr` : e.muster_time ? `Antreten ${hm(e.muster_time)} Uhr` : "Informationen folgen";
+    return { unbreakable: true, margin: [0, 0, 0, 10], stack: [
+      { text: e.title.toUpperCase(), bold: true, characterSpacing: .3 },
+      `${fullDate(e.event_date)} | ${time} | ${e.place}`,
+      ...(e.notes && !(time === "Informationen folgen" && e.notes === "Informationen folgen") ? [e.notes] : []),
+      ...(e.dress ? [`Adjustierung: ${e.dress}`] : []),
+      ...(e.note_marketenderinnen ? [`Für Marketenderinnen: ${e.note_marketenderinnen}`] : []),
+      PARTICIPATION[e.kind] || ""
+    ] };
+  };
+  const strip = h => h.replace(/<[^>]+>/g, "");
+  return {
+    pageSize: "A4", pageMargins: [62, 40, 62, 86],
+    info: { title: `Rundschreiben ${nlMonthTitle(nl.month)}`, author: "Speckbacher - Schützenkompanie Hall in Tirol" },
+    defaultStyle: { font: "Karla", fontSize: 10.5, lineHeight: 1.25, color: "#1d1d1b" },
+    footer: () => ({ margin: [62, 22, 62, 0], columns: LETTER.footer.map((col, i) => ({ width: i === 0 ? "*" : "auto",
+      stack: col.map((l, j) => ({ text: strip(l), bold: i === 0 && j === 0, color: i === 0 && j === 0 ? "#1d1d1b" : "#4a4a48" })), fontSize: 6.8, lineHeight: 1.2 })), columnGap: 14 }),
+    content: [
+      ...(logo ? [{ image: logo, width: 178, alignment: "center", margin: [0, 0, 0, 22] }] : []),
+      { text: `${LETTER.place}, ${dmy(nl.letter_date)}`, alignment: "right", margin: [0, 0, 0, 16] },
+      { text: [{ text: "RUND", bold: true }, "SCHREIBEN"], fontSize: 18, margin: [0, 0, 0, 16] },
+      { text: "Liebe Kameradinnen und Kameraden,", margin: [0, 0, 0, 7] },
+      ...paras(nl.intro),
+      ...items.map(item),
+      ...(preview.length ? [{ text: `VORSCHAU ${nlMonthName(firstOfMonth(nl.month, 1)).toUpperCase()}`, fontSize: 13, margin: [0, 8, 0, 8] }, ...preview.map(item)] : []),
+      ...(nl.free_text ? [{ stack: paras(nl.free_text), margin: [0, 8, 0, 0] }] : []),
+      { text: "Schützen Heil", margin: [0, 12, 0, 22] },
+      { text: nl.signature }
+    ]
+  };
+}
+async function fileToDataUrl(url) {
+  const r = await fetch(url); if (!r.ok) return null;
+  const b = await r.blob();
+  return new Promise(ok => { const f = new FileReader(); f.onload = () => ok(f.result); f.readAsDataURL(b); });
+}
+async function nlPdfBlob(nl) {
+  await loadPdfMake();
+  const logo = await fileToDataUrl("logo-brief.jpg").catch(() => null);
+  return new Promise(ok => pdfMake.createPdf(nlPdfDoc(nl, logo)).getBlob(ok));
+}
+const nlFileName = nl => `Rundschreiben_${nlMonthTitle(nl.month).replace(/\s+/g, "_")}.pdf`;
+// PDF erzeugen und im Speicher ablegen (für den Mail-Anhang)
+async function storeNewsletterPdf(nl) {
+  const blob = await nlPdfBlob(nl);
+  const path = `${nl.id}.pdf`;
+  const { error } = await db.storage.from("rundschreiben").upload(path, blob, { upsert: true, contentType: "application/pdf" });
+  if (error) throw error;
+  if (nl.pdf_path !== path) { await db.from("newsletters").update({ pdf_path: path }).eq("id", nl.id); nl.pdf_path = path; }
+  return blob;
+}
+const mailRecipients = () => state.members.filter(m => m.active && priv(m).newsletter_email && priv(m).email);
+async function loadMailStatus(nl) {
+  const { data } = await db.from("newsletter_mails").select("status,error,member_id,sent_at").eq("newsletter_id", nl.id);
+  state.nlMailStatus = { id: nl.id, rows: data || [] };
+  if (state.nlEdit && state.nlDraft?.id === nl.id) render();
+}
+function mailStatusLine(nl) {
+  const st = state.nlMailStatus?.id === nl.id ? state.nlMailStatus.rows : null;
+  if (!st) return `<p class="send-stat">Versandstatus wird geladen …</p>`;
+  if (!st.length) return `<p class="send-stat">Noch nicht per E-Mail verschickt.</p>`;
+  const n = k => st.filter(r => r.status === k).length;
+  const errs = st.filter(r => r.status === "fehler");
+  const name = id => { const m = state.allMembers.find(x => x.id === id); return m ? fullName(m) : "?"; };
+  return `<p class="send-stat">Gesendet: <b>${n("gesendet")}</b>${n("offen") ? ` · wird verschickt: <b>${n("offen")}</b>` : ""}${errs.length ? ` · Fehler: <b>${errs.length}</b>` : ""}</p>
+    ${errs.length ? `<p class="rule">${errs.slice(0, 5).map(r => `${esc(name(r.member_id))}: ${esc(r.error || "")}`).join("<br>")}</p>` : ""}`;
+}
+async function sendNewsletterMail(nl, test) {
+  try { await storeNewsletterPdf(nl); }
+  catch (e) { console.error(e); return toast("Das PDF konnte nicht erstellt werden."); }
+  const { data, error } = await db.functions.invoke("rundschreiben", { body: { mode: test ? "test" : "mail", id: nl.id } });
+  state.nlMailConfirm = false;
+  if (error) {
+    let msg = "Der E-Mail-Versand konnte nicht gestartet werden.";
+    try { msg = (await error.context.json()).error || msg; } catch (e) {}
+    render(); return toast(msg);
+  }
+  toast(test ? `Test-Mail an ${data.to} geschickt.` : `${data.queued} E-Mails werden verschickt (etwa 25 pro Minute).`);
+  loadMailStatus(nl);
+}
+// Teilen über das Teilen-Menü des Handys (z. B. WhatsApp-Gruppe) mit PDF; sonst PDF laden und WhatsApp mit Text öffnen
+function shareText(nl) {
+  const url = new URL(`./#rs-${nl.id}`, location.href).href;
+  return `Rundschreiben ${nlMonthTitle(nl.month)} der Speckbacher Schützenkompanie: Die Termine für ${nlMonthName(nl.month)} sind da. Bitte gib deine Rückmeldung in der App: ${url}`;
+}
+async function shareNewsletter(nl) {
+  const blob = await nlPdfBlob(nl);
+  const file = new File([blob], nlFileName(nl), { type: "application/pdf" });
+  const text = shareText(nl);
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], text, title: `Rundschreiben ${nlMonthTitle(nl.month)}` }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  downloadBlob(blob, nlFileName(nl));
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  toast("Das PDF wurde heruntergeladen. In WhatsApp kannst du es zusätzlich anhängen.");
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+async function deleteNewsletter(nl) {
+  const { error } = await db.from("newsletters").delete().eq("id", nl.id);
+  if (error) return fail(error, "Das Rundschreiben konnte nicht gelöscht werden.");
+  if (nl.pdf_path) await db.storage.from("rundschreiben").remove([nl.pdf_path]);
+  state.newsletters = state.newsletters.filter(n => n.id !== nl.id);
+  state.nlEdit = false; state.nlDeleteConfirm = false; state.nlDraft = null;
+  render(); toast("Rundschreiben gelöscht.");
+}
+
 /* ---------- Mitglieder ---------- */
 function latestNewsletter() {
   const cutoff = firstOfMonth(todayIso(), -1);
@@ -97,7 +221,7 @@ function newsletterCard() {
 function renderLetterView() {
   const nl = (state.newsletters || []).find(n => n.id === state.letterId);
   if (!nl) { state.letterId = null; return renderMember(); }
-  return `<button class="back" id="letter-close">‹ Zurück</button>
+  return `<button class="back" id="letter-close">${ico("arrow_back")}Zurück</button>
     <div class="letter-screen">${letterHtml(nl, state.me, false)}</div>
     <div class="row-actions" style="margin-top:12px"><button class="btn" id="letter-print">Drucken / als PDF</button></div>`;
 }
@@ -143,7 +267,11 @@ function renderNewsletterEditor() {
   const d = state.nlDraft;
   const thisMonth = nlEvents(d.month), nextMonth = nlEvents(firstOfMonth(d.month, 1));
   const saved = d.id ? state.newsletters.find(n => n.id === d.id) : null;
-  return `<button class="back" id="nl-back" type="button">‹ Alle Rundschreiben</button>
+  return `<div class="row-actions" style="justify-content:space-between;margin-bottom:8px"><button class="back" id="nl-back" type="button" style="margin-bottom:0">${ico("arrow_back")}Alle Rundschreiben</button>
+    ${saved ? iconBtn("delete", "Rundschreiben löschen", 'id="nl-delete"', "danger") : ""}</div>
+  ${saved && state.nlDeleteConfirm ? `<div class="danger-box" style="margin-bottom:12px"><p><b>Rundschreiben ${esc(nlMonthTitle(saved.month))} wirklich löschen?</b></p>
+    <p class="fn">${saved.published_at ? "Es verschwindet auch aus der App der Mitglieder. " : ""}Das lässt sich nicht rückgängig machen.</p>
+    <div class="row-actions"><button class="btn danger" id="nl-delete-yes">Ja, löschen</button><button class="btn ghost" id="nl-delete-no">Abbrechen</button></div></div>` : ""}
   <form class="panel" id="nl-form">
     <h2>Rundschreiben ${esc(nlMonthTitle(d.month))}${saved?.published_at ? ` <span class="pill">veröffentlicht</span>` : ` <span class="pill off">Entwurf</span>`}</h2>
     <div class="grid2">
@@ -172,6 +300,19 @@ function renderNewsletterEditor() {
       : state.nlConfirm
         ? `<p><b>Jetzt veröffentlichen und alle mit Erinnerungen per Push benachrichtigen?</b></p><div class="row-actions"><button class="btn yes" id="nl-publish-yes">Ja, veröffentlichen</button><button class="btn ghost" id="nl-publish-no">Abbrechen</button></div>`
         : `<p class="fn">Erst speichern, dann veröffentlichen. Alle Mitglieder sehen es danach in der App und bekommen eine Push-Nachricht.</p><div class="row-actions"><button class="btn yes" id="nl-publish">In der App veröffentlichen</button></div>`}
+    ${saved.published_at ? `<div class="send-box">
+      <h3 class="ico-title">${ico("mail")}Per E-Mail</h3>
+      <p class="fn">Als Mailtext mit persönlicher Anrede und dem Rundschreiben als PDF im Anhang, an alle mit „Rundschreiben per E-Mail“ (${mailRecipients().length}).</p>
+      ${mailStatusLine(saved)}
+      ${state.nlMailConfirm
+        ? `<p><b>Jetzt an ${mailRecipients().length} Mitglieder per E-Mail schicken?</b></p><div class="row-actions"><button class="btn yes" id="nl-mail-yes">Ja, verschicken</button><button class="btn ghost" id="nl-mail-no">Abbrechen</button></div>`
+        : `<div class="row-actions"><button class="btn yes" id="nl-mail" ${mailRecipients().length ? "" : "disabled"}>${ico("send")}Per E-Mail senden</button><button class="btn" id="nl-mail-test">Test an mich</button></div>`}
+    </div>
+    <div class="send-box">
+      <h3 class="ico-title">${ico("share")}Teilen, z. B. in WhatsApp</h3>
+      <p class="fn">Am Handy öffnet sich das Teilen-Menü mit dem PDF – dort die WhatsApp-Gruppe auswählen. Am Computer wird das PDF geladen und WhatsApp mit einem Text geöffnet.</p>
+      <div class="row-actions"><button class="btn" id="nl-share">${ico("share")}Teilen</button><button class="btn" id="nl-pdf">${ico("download")}PDF herunterladen</button></div>
+    </div>` : ""}
     <h4 class="sec-title">Serienbrief für die Post</h4>
     <p class="fn">Ein persönlicher Brief je Person, im Druckdialog „Als PDF sichern“ oder direkt drucken. Am besten am Computer.</p>
     <div class="row-actions">
@@ -253,7 +394,9 @@ document.addEventListener("click", async ev => {
   if (d.nl) {
     const n = state.newsletters.find(x => x.id === +d.nl);
     state.nlDraft = { ...n, event_ids: [...n.event_ids], preview_ids: [...n.preview_ids] };
-    state.nlEdit = true; state.nlShowPreview = false; state.nlConfirm = false; state.nlResendConfirm = false; render(); scrollTo(0, 0); return;
+    state.nlEdit = true; state.nlShowPreview = false; state.nlConfirm = false; state.nlResendConfirm = false; state.nlDeleteConfirm = false; state.nlMailConfirm = false; state.nlMailStatus = null; render(); scrollTo(0, 0);
+    if (n.published_at) loadMailStatus(n);
+    return;
   }
   if (t.id === "nl-back") { state.nlEdit = false; render(); return; }
   if (t.id === "nl-preview") { readNewsletterForm(); state.nlShowPreview = true; render(); document.querySelector(".letter-screen")?.scrollIntoView({ behavior: "smooth" }); return; }
@@ -273,6 +416,14 @@ document.addEventListener("click", async ev => {
     return toast(sent === null ? "Die Push-Nachricht konnte nicht verschickt werden." : `Erneut an ${sent} Mitglieder mit Erinnerungen geschickt.`);
   }
   const saved = () => state.newsletters.find(n => n.id === state.nlDraft?.id);
+  if (t.id === "nl-delete") { state.nlDeleteConfirm = true; render(); scrollTo(0, 0); return; }
+  if (t.id === "nl-delete-no") { state.nlDeleteConfirm = false; render(); return; }
+  if (t.id === "nl-delete-yes") { t.disabled = true; return deleteNewsletter(saved()); }
+  if (t.id === "nl-mail") { state.nlMailConfirm = true; render(); return; }
+  if (t.id === "nl-mail-no") { state.nlMailConfirm = false; render(); return; }
+  if (t.id === "nl-mail-yes" || t.id === "nl-mail-test") { t.disabled = true; t.setAttribute("aria-busy", "true"); return sendNewsletterMail(saved(), t.id === "nl-mail-test"); }
+  if (t.id === "nl-share") { t.disabled = true; try { await shareNewsletter(saved()); } finally { t.disabled = false; } return; }
+  if (t.id === "nl-pdf") { t.disabled = true; const nl = saved(); try { downloadBlob(await nlPdfBlob(nl), nlFileName(nl)); } finally { t.disabled = false; } return; }
   if (t.id === "nl-print-post") return printLetters(saved(), postRecipients());
   if (t.id === "nl-print-noapp") return printLetters(saved(), noAppRecipients());
   if (t.id === "nl-print-me") return printLetters(saved(), [state.me]);

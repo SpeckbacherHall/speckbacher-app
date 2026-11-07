@@ -93,3 +93,12 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 - Die Farben sind aus der Kompaniefarbe Lodengrün `#4f6c37` mit Googles `@material/material-color-utilities` erzeugt (Schema „Tonal Spot“, wie Material Theme Builder und Flutter `ColorScheme.fromSeed`). Rot (Fahnenabordnung) und Blau (sonstige Aktivität) aus dem Logo sind eigene Farben (`--md-ext-…`). Hell und dunkel folgen der Geräteeinstellung.
 - Schrift Roboto (selbst gehostet in `fonts/`, Lizenz `fonts/Roboto-LICENSE`); Karla bleibt für Rundschreiben-Druck und PDFs.
 - Bewusst ohne `@material/web`: die Bibliothek ist im Wartungsmodus, die App braucht so keinen Build-Schritt und kein zusätzliches JavaScript. Eine spätere Flutter-App bekommt mit derselben Grundfarbe dieselben Farben.
+
+## Rundschreiben per E-Mail, Teilen, Marketenderinnen
+
+- **E-Mail:** Mitglieder mit „Rundschreiben per E-Mail“ (Admin → Mitglied bearbeiten, oder selbst unter „Meine Daten“) bekommen das Rundschreiben als Mailtext mit persönlicher Anrede und als PDF im Anhang. Das PDF erzeugt die App (pdfmake) und legt es im privaten Speicher `rundschreiben` ab; die Edge Function `rundschreiben` verschickt über Microsoft 365 (Microsoft Graph `sendMail`), höchstens 25 Mails je Minute (Zeitplan `rundschreiben-mail`, Warteschlange `newsletter_mails`).
+  Geheimnisse der Edge Functions: `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` (App-Registrierung in Microsoft Entra mit Anwendungsberechtigung `Mail.Send`, auf das Absenderpostfach beschränkt), `MAIL_FROM`.
+- **Teilen:** „Teilen“ öffnet am Handy das Teilen-Menü mit dem PDF (z. B. WhatsApp-Gruppe); am Computer wird das PDF geladen und WhatsApp mit Text und App-Link geöffnet.
+- **Löschen:** Rundschreiben lassen sich im Editor über das Papierkorb-Symbol löschen (samt PDF).
+- **Marketenderinnen:** Je Termin ein eigener Hinweis; sichtbar für Mitglieder mit der Funktion „Marketenderin“, in ihren Briefen/Mails und im allgemeinen PDF.
+- **Oberfläche:** Textfelder mit schwebender Beschriftung (`felder.js`, nach material-web „Outlined text field“), Symbolschaltflächen mit Material Symbols (`icons.js`).

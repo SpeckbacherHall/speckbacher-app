@@ -17,7 +17,7 @@ function renderFibel() {
   if (ch) {
     const list = fibelSorted().filter(c => admin || c.published);
     const i = list.findIndex(c => c.id === ch.id);
-    return `<button class="back" id="fibel-back">‹ Inhalt der Fibel</button>
+    return `<button class="back" id="fibel-back">${ico("arrow_back")}Inhalt der Fibel</button>
     <article class="panel fibel-text">
       ${!ch.published ? `<span class="pill off">Entwurf – nur für Admins sichtbar</span>` : ""}
       <h2>${esc(ch.title)}</h2>
@@ -30,7 +30,7 @@ function renderFibel() {
     ${admin ? `<div class="row-actions" style="margin-top:8px"><button class="btn ghost" data-fibel-edit="${ch.id}">Kapitel bearbeiten</button></div>` : ""}`;
   }
   const list = fibelSorted().filter(c => admin || c.published);
-  return `<button class="back" id="fibel-close">‹ Zu den Ausrückungen</button>
+  return `<button class="back" id="fibel-close">${ico("arrow_back")}Zu den Ausrückungen</button>
   <div class="panel">
     <h2>Fibel</h2>
     <p class="fn">Wissenswertes über unsere Kompanie, ihren Namensgeber und das Schützenwesen. Die Fibel wächst laufend.</p>
@@ -43,7 +43,7 @@ function renderFibel() {
 function renderFibelEditor() {
   const isNew = state.fibelEdit === "new";
   const c = isNew ? { title: "", body: "", sort: (fibelSorted().at(-1)?.sort ?? 0) + 10, published: false } : state.fibel.find(x => x.id === state.fibelEdit);
-  return `<button class="back" id="fibel-edit-cancel" type="button">‹ Zurück</button>
+  return `<button class="back" id="fibel-edit-cancel" type="button">${ico("arrow_back")}Zurück</button>
   <form class="panel" id="fibel-form">
     <h2>${isNew ? "Neues Kapitel" : "Kapitel bearbeiten"}</h2>
     <label for="fb-title">Überschrift<input id="fb-title" required value="${esc(c.title)}"></label>

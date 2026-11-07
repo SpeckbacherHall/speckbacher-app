@@ -100,7 +100,7 @@ async function loadAll() {
   const uid = (await db.auth.getUser()).data.user?.id;
   const since = daysAgoIso(400);
   const [mem, ev, rs, at, nl, bd, fb, ch] = await Promise.all([
-    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,address,birthday,calendar_token,hide_birthday,joined_on,membership_status,fee_liable,seniority_counts,phone_private,phone_work,comment)").order("last_name").order("first_name"),
+    db.from("members").select("id,user_id,first_name,last_name,role_title,rank,is_admin,is_board,active,gender,member_private(phone,rifle_number,email,needs_post,newsletter_email,address,birthday,calendar_token,hide_birthday,joined_on,membership_status,fee_liable,seniority_counts,phone_private,phone_work,comment)").order("last_name").order("first_name"),
     db.from("events").select("*").gte("event_date", since).order("event_date").order("start_time", { nullsFirst: false }),
     fetchAll(() => db.from("responses").select("event_id,member_id,status,entered_by,events!inner(event_date)")
       .gte("events.event_date", since).order("event_id").order("member_id")).then(stripJoin),
@@ -171,6 +171,7 @@ function renderMember() {
         <span class="type t-${e.kind}">${TYPES[e.kind]}</span>
         <h3>${esc(e.title)}</h3>
         <p class="meta"><span>${timesLine(e)}</span><span>${esc(e.place)}</span>${e.dress ? `<span>Adjustierung: ${esc(e.dress)}</span>` : ""}${e.notes ? `<span>${esc(e.notes)}</span>` : ""}</p>
+        ${e.note_marketenderinnen && isMk(state.me) ? mkNote(e) : ""}
         <div class="actions">${act}</div>
         ${!r && !canDecline(e) ? `<p class="rule">Bei ${e.kind === "fahne" ? "Fahnenabordnungen" : "sonstigen Aktivitäten"} meldest du dich nur, wenn du dabei bist.</p>` : ""}
       </div></article>`;
@@ -231,7 +232,7 @@ function renderSettings() {
     "nicht-unterstuetzt": `<p class="fn">Dieser Browser unterstützt keine Erinnerungen. Versuche es mit Chrome (Android) oder Safari vom Home-Bildschirm (iPhone).</p>`,
     "unbekannt": `<p class="fn">Wird geprüft …</p>`
   }[state.pushState];
-  return `<button class="back" id="close-settings">‹ Zu den Ausrückungen</button>
+  return `<button class="back" id="close-settings">${ico("arrow_back")}Zu den Ausrückungen</button>
   <div class="panel">
     <h2>Erinnerungen</h2>
     ${push}
@@ -388,22 +389,21 @@ function renderAdmin() {
       const t = tally(e);
       // Am Termintag und danach öffnet der Termin direkt in der Anwesenheit
       const tab = state.detailTab || (e.event_date <= todayIso() ? "anw" : "rueck");
-      return html + `<button class="back" id="back">‹ Alle Termine</button>
+      return html + `<button class="back" id="back">${ico("arrow_back")}Alle Termine</button>
       <div class="panel">
         <span class="type t-${e.kind}">${TYPES[e.kind]}</span>
         <h2>${esc(e.title)}</h2>
-        <p class="meta"><span>${longDate(e.event_date)} · ${timesLine(e)}</span><span>${esc(e.place)}${e.dress ? " · " + esc(e.dress) : ""}</span></p>
+        <p class="meta"><span>${longDate(e.event_date)} · ${timesLine(e)}</span><span>${esc(e.place)}${e.dress ? " · " + esc(e.dress) : ""}</span>${e.notes ? `<span>${esc(e.notes)}</span>` : ""}</p>
+        ${e.note_marketenderinnen ? mkNote(e) : ""}
         ${tab === "rueck" ? bar(t, canDecline(e)) : attendanceSummary(e)}
         <div class="seg sm" role="group" aria-label="Ansicht des Termins">
           <button data-dtab="rueck" aria-pressed="${tab === "rueck"}">Rückmeldungen</button>
           <button data-dtab="anw" aria-pressed="${tab === "anw"}">Anwesenheit</button>
         </div>
         <div class="row-actions">
-          <button class="btn" id="event-edit">Bearbeiten</button>
-          <button class="btn" id="export">Liste als CSV</button>
           ${state.confirmDelete
             ? `<span class="fn">Termin wirklich löschen?</span><button class="btn danger" id="delete-yes">Ja, löschen</button><button class="btn ghost" id="delete-no">Abbrechen</button>`
-            : `<button class="btn danger" id="delete">Termin löschen</button>`}
+            : `${iconBtn("edit", "Termin bearbeiten", 'id="event-edit"', "tonal")}${iconBtn("download", "Liste als CSV herunterladen", 'id="export"', "tonal")}${iconBtn("delete", "Termin löschen", 'id="delete"', "outlined danger")}`}
         </div>
         ${tab === "anw" ? attendanceList(e, t) : `
         <div class="sec"><h4>Zugesagt <span>${t.yes.length}</span></h4>${rows(t.yes, "Noch keine Zusagen.", e, "yes")}</div>
@@ -448,24 +448,27 @@ function accessBox(m) {
   const msg = accessMessage(a);
   // WhatsApp braucht die internationale Form ohne „+“: 0664 … → 43664 …
   const phone = (priv(m).phone || "").replace(/[^\d+]/g, "").replace(/^00/, "").replace(/^\+/, "").replace(/^0/, "43");
-  return `<tr><td colspan="2"><div class="access">
+  return `<div class="access">
     <p><b>Zugangscode für ${esc(a.first_name)}:</b> <span class="code">${esc(a.code)}</span></p>
     <p class="fn">Der Code wird nur jetzt angezeigt. Ein neuer Code macht den alten ungültig.</p>
     <pre class="msg" id="access-msg">${esc(msg)}</pre>
     <div class="row-actions">
       <button class="btn yes" id="copy-msg">Nachricht kopieren</button>
       ${phone ? `<a class="btn" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Per WhatsApp senden</a>` : ""}
-    </div></div></td></tr>`;
+    </div></div>`;
 }
 function phoneRows(list) {
   if (!list.length) return `<p class="empty">Kein Mitglied gefunden.</p>`;
-  return `<table><tbody>${list.map(m => {
+  return `<ul class="m-list">${list.map(m => {
     const p = priv(m);
-    const access = !m.active ? "" : !p.email ? `<span class="fn">keine E-Mail</span>`
-      : `<button class="btn ghost" data-access="${m.id}">${m.user_id ? "Neuer Code" : "Zugang erzeugen"}</button>`;
-    return `<tr><td><button class="name-btn" data-edit="${m.id}">${esc(fullName(m))}</button>${m.user_id ? ` <span class="pill">App</span>` : ""}${!m.active ? ` <span class="pill off">inaktiv</span>` : ""}<br><span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span></td>
-      <td style="text-align:right">${p.phone ? `<a class="tel" href="tel:${esc(p.phone.replace(/\s/g, ""))}">${esc(p.phone)}</a>` : `<span class="fn">keine Nummer</span>`}<br>${access}</td></tr>${accessBox(m)}`;
-  }).join("")}</tbody></table>`;
+    const tel = p.phone ? p.phone.replace(/\s/g, "") : "";
+    const access = !m.active || !p.email ? "" : iconBtn("key", m.user_id ? "Neuen Anmeldecode erzeugen" : "Zugang erzeugen", `data-access="${m.id}"`);
+    return `<li class="m-row"><div class="m-main">
+        <span class="m-name"><button class="name-btn" data-edit="${m.id}">${esc(fullName(m))}</button>${m.user_id ? ` <span class="pill">App</span>` : ""}${p.newsletter_email ? ` <span class="pill">E-Mail</span>` : ""}${!m.active ? ` <span class="pill off">inaktiv</span>` : ""}</span>
+        <span class="fn">${esc([m.rank, m.role_title].filter(Boolean).join(" · ") || "Mitglied")}${p.rifle_number ? " · Gewehr Nr. " + esc(p.rifle_number) : ""}</span>
+        <span class="fn">${p.phone ? esc(p.phone) : "keine Nummer"}${!p.email ? " · keine E-Mail" : ""}</span></div>
+      <div class="m-acts">${tel ? iconLink("call", `${esc(fullName(m))} anrufen`, `tel:${esc(tel)}`) : ""}${access}</div></li>${accessBox(m) ? `<li class="m-access">${accessBox(m)}</li>` : ""}`;
+  }).join("")}</ul>`;
 }
 async function createAccess(memberId) {
   const { data, error } = await db.functions.invoke("zugang", { body: { member_id: memberId } });
@@ -490,7 +493,7 @@ function renderEdit() {
   const m = isNew ? { active: true, is_admin: false } : state.allMembers.find(x => x.id === state.edit);
   if (!m) { state.edit = null; return renderPhone(); }
   const p = isNew ? {} : priv(m);
-  return `<button class="back" id="edit-cancel" type="button">‹ Alle Mitglieder</button>
+  return `<button class="back" id="edit-cancel" type="button">${ico("arrow_back")}Alle Mitglieder</button>
   <form class="panel" id="edit-form">
     <h2>${isNew ? "Neues Mitglied" : esc(fullName(m))}</h2>
     <div class="grid2">${field("e-first", "Vorname", m.first_name, "text", "required")}${field("e-last", "Nachname", m.last_name, "text", "required")}</div>
@@ -508,6 +511,7 @@ function renderEdit() {
       ${check("e-fee", "Beitragspflichtig", isNew ? true : p.fee_liable)}
       ${check("e-seniority", "Zählt für Langjährigkeit", isNew ? true : p.seniority_counts)}
       ${check("e-post", "Rundschreiben per Post", p.needs_post)}
+      ${check("e-nlmail", "Rundschreiben per E-Mail (mit PDF)", p.newsletter_email)}
       ${check("e-active", "Aktiv (kann sich anmelden)", m.active)}
       ${check("e-board", "Vorstand (sieht Vorstandstermine)", m.is_board)}
       ${check("e-admin", "Admin", m.is_admin)}
@@ -532,7 +536,7 @@ async function saveMember() {
   };
   const privRow = {
     email, phone: val("#e-phone"), rifle_number: val("#e-rifle"), address: val("#e-address"),
-    birthday: val("#e-birthday"), joined_on: val("#e-joined"), needs_post: $("#e-post").checked,
+    birthday: val("#e-birthday"), joined_on: val("#e-joined"), needs_post: $("#e-post").checked, newsletter_email: $("#e-nlmail").checked,
     phone_private: val("#e-phone-private"), phone_work: val("#e-phone-work"), membership_status: val("#e-status"),
     comment: val("#e-comment"), fee_liable: $("#e-fee").checked, seniority_counts: $("#e-seniority").checked
   };
@@ -588,10 +592,12 @@ function localDateTime(iso) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 const dtLabel = iso => new Date(iso).toLocaleString("de-AT", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+const isMk = m => /marketenderin/i.test(m?.role_title || "");
+const mkNote = e => `<div class="note-box mk-note"><b>Für Marketenderinnen</b><span>${esc(e.note_marketenderinnen).replace(/\n/g, "<br>")}</span></div>`;
 function renderNew(e = null) {
   const v = k => esc(e?.[k] ?? "");
   const t = k => esc(hm(e?.[k]));
-  return `${e ? `<button class="back" id="event-edit-cancel" type="button">‹ Zurück zum Termin</button>` : ""}
+  return `${e ? `<button class="back" id="event-edit-cancel" type="button">${ico("arrow_back")}Zurück zum Termin</button>` : ""}
   <form class="panel" id="new-form">
     <h2>${e ? "Termin bearbeiten" : "Neuen Termin anlegen"}</h2>
     <label for="f-kind">Art<select id="f-kind">${Object.entries(TYPES).map(([k, l]) => `<option value="${k}" ${(e?.kind || state.newKind) === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
@@ -607,6 +613,8 @@ function renderNew(e = null) {
     </div>
     <label for="f-place">Ort<input id="f-place" required placeholder="z. B. Pfarrkirche St. Nikolaus" value="${v("place")}"></label>
     <label for="f-notes">Hinweis (optional)<input id="f-notes" value="${v("notes")}"></label>
+    <label for="f-mk">Hinweis für Marketenderinnen (optional)<textarea id="f-mk" rows="2">${v("note_marketenderinnen")}</textarea></label>
+    <p class="rule">Sehen nur Mitglieder mit der Funktion „Marketenderin“ (und Admins), z. B. Tracht, Treffpunkt oder was mitzubringen ist.</p>
     <label for="f-ask">Anmelde-Erinnerung an alle ohne Rückmeldung (optional)<input id="f-ask" type="datetime-local" value="${e?.ask_at ? localDateTime(e.ask_at) : ""}"></label>
     <div class="filters" role="group" aria-label="Erinnerung schnell setzen">
       ${[[7, "1 Woche vorher"], [3, "3 Tage vorher"], [2, "2 Tage vorher"]].map(([n, l]) => `<button class="chip" type="button" data-askdays="${n}">${l}</button>`).join("")}
@@ -682,7 +690,7 @@ document.addEventListener("click", async ev => {
   if (d.atab) { state.newKind = null; state.adminTab = d.atab; state.openEvent = null; state.access = null; state.edit = null; state.editEvent = false; state.nlEdit = false; state.syncOpen = false; state.sync = null; render(); return; }
   if (d.open) { state.openEvent = +d.open; state.confirmDelete = false; state.editEvent = false; state.detailTab = null; render(); scrollTo(0, 0); return; }
   if (t.id === "back") { state.openEvent = null; render(); return; }
-  if (d.access) { t.disabled = true; t.textContent = "Wird erzeugt …"; return createAccess(d.access); }
+  if (d.access) { t.disabled = true; t.setAttribute("aria-busy", "true"); return createAccess(d.access); }
   if (d.edit) { state.edit = d.edit; state.access = null; state.confirmMemberDelete = false; render(); scrollTo(0, 0); return; }
   if (t.id === "member-delete") { state.confirmMemberDelete = true; render(); return; }
   if (t.id === "member-delete-no") { state.confirmMemberDelete = false; render(); return; }
@@ -777,6 +785,7 @@ document.addEventListener("submit", async ev => {
       kind: $("#f-kind").value, title: $("#f-title").value.trim(), event_date: $("#f-date").value,
       start_time: $("#f-time").value || null, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
       dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null,
+      note_marketenderinnen: $("#f-mk").value.trim() || null,
       ask_at: $("#f-ask").value ? new Date($("#f-ask").value).toISOString() : null
     };
     if (!editing) row.created_by = state.me.id;

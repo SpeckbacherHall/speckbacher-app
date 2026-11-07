@@ -14,15 +14,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Speckbacher">
 <link rel="preload" href="fonts/roboto-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=2026-11-07.1">
-<link rel="stylesheet" href="letter.css?v=2026-11-07.1">
+<link rel="stylesheet" href="styles.css?v=2026-11-07.2">
+<link rel="stylesheet" href="letter.css?v=2026-11-07.2">
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">
       <h1><img class="logo" src="logo.svg" alt=""><span class="sr">Speckbacher Schützenkompanie Hall in Tirol</span></h1>
-      <button class="btn ghost" id="logout" hidden>Abmelden</button>
+      <button class="icon-btn" id="logout" aria-label="Abmelden" title="Abmelden" hidden><svg class="ico" viewBox="0 -960 960 960" aria-hidden="true" focusable="false"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h299v60H180v600h299v60H180Zm486-185-43-43 102-102H360v-60h363L621-612l43-43 176 176-174 174Z"/></svg></button>
     </div>
     <div class="seg" role="group" aria-label="Ansicht" id="roles" hidden>
       <button id="role-member" aria-pressed="true">Mitglied</button>
@@ -36,15 +36,17 @@
 
 <!-- supabase-js 2.45.4 liegt im Repository (vendor/), damit kein fremder Server Code in die App einschleusen kann -->
 <script src="vendor/supabase-2.45.4.js"></script>
-<script src="config.js?v=2026-11-07.1"></script>
-<script src="app.js?v=2026-11-07.1"></script>
-<script src="rundschreiben.js?v=2026-11-07.1"></script>
-<script src="geburtstage.js?v=2026-11-07.1"></script>
-<script src="fibel.js?v=2026-11-07.1"></script>
-<script src="abgleich.js?v=2026-11-07.1"></script>
-<script src="laufbahn.js?v=2026-11-07.1"></script>
-<script src="meinedaten.js?v=2026-11-07.1"></script>
-<script src="protokolle.js?v=2026-11-07.1"></script>
-<script src="vorstand.js?v=2026-11-07.1"></script>
+<script src="config.js?v=2026-11-07.2"></script>
+<script src="icons.js?v=2026-11-07.2"></script>
+<script src="app.js?v=2026-11-07.2"></script>
+<script src="rundschreiben.js?v=2026-11-07.2"></script>
+<script src="geburtstage.js?v=2026-11-07.2"></script>
+<script src="fibel.js?v=2026-11-07.2"></script>
+<script src="abgleich.js?v=2026-11-07.2"></script>
+<script src="laufbahn.js?v=2026-11-07.2"></script>
+<script src="meinedaten.js?v=2026-11-07.2"></script>
+<script src="protokolle.js?v=2026-11-07.2"></script>
+<script src="vorstand.js?v=2026-11-07.2"></script>
+<script src="felder.js?v=2026-11-07.2"></script>
 </body>
 </html>
