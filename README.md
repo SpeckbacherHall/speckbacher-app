@@ -86,3 +86,10 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 - Beim Termin (Anlegen/Bearbeiten) lässt sich ein Zeitpunkt für die **Anmelde-Erinnerung** setzen. Dann bekommen alle ohne Rückmeldung (bei Vorstandsterminen nur der Vorstand) eine Push-Nachricht. Der Zeitplan `anmelde-erinnerung` prüft alle 15 Minuten. In der Termin-Ansicht kann ein Admin zusätzlich „Jetzt an Rückmeldung erinnern“.
 - Die Erinnerung an alle mit Zusage am Vortag um 18 Uhr bleibt unverändert.
 - Admin → Rundschreiben → „Anzeige auf der Startseite zurücksetzen“ nimmt das aktuelle Rundschreiben bei allen von der Startseite; im Rundschreiben selbst lässt es sich wieder einblenden.
+
+## Design: Material Design 3
+
+- `styles.css` folgt Material 3 (m3.material.io): Farbrollen, Typografie, Formen, Höhen und Zustandsebenen als CSS-Variablen (`--md-sys-…`).
+- Die Farben sind aus der Kompaniefarbe Lodengrün `#4f6c37` mit Googles `@material/material-color-utilities` erzeugt (Schema „Tonal Spot“, wie Material Theme Builder und Flutter `ColorScheme.fromSeed`). Rot (Fahnenabordnung) und Blau (sonstige Aktivität) aus dem Logo sind eigene Farben (`--md-ext-…`). Hell und dunkel folgen der Geräteeinstellung.
+- Schrift Roboto (selbst gehostet in `fonts/`, Lizenz `fonts/Roboto-LICENSE`); Karla bleibt für Rundschreiben-Druck und PDFs.
+- Bewusst ohne `@material/web`: die Bibliothek ist im Wartungsmodus, die App braucht so keinen Build-Schritt und kein zusätzliches JavaScript. Eine spätere Flutter-App bekommt mit derselben Grundfarbe dieselben Farben.
