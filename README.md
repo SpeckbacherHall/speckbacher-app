@@ -108,3 +108,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 - **Statistik:** Admin → Termine → „Statistik“: je Jahr Termine mit Anwesenheit, Schützen und Marketenderinnen (gesamt und Ø je Termin) und abgegebene Schuss; Liste je Termin, als CSV exportierbar (`statistik.js`). Marketenderinnen = Funktion „Marketenderin“ laut heutigem Mitgliederstand.
 - **Schusszahl:** beim Termin unter „Anwesenheit“ (`events.shots`).
 - **Öffentlicher Kalender:** Häkchen „Öffentlich“ beim Termin (`events.is_public`, nicht für Vorstandstermine). Abo-Adresse für das ICS-Plugin der Homepage: `https://eaqxzkjffnxdtpxrfwtu.supabase.co/functions/v1/kalender?oeffentlich=1` (nur Bezeichnung, Zeit, Ort, Adjustierung; Termine ab 90 Tagen zurück). Der Link lässt sich unter Admin → Termine kopieren.
+
+## Begrüßung und Beilagen
+
+- Oben rechts steht „Servus <Vorname>“.
+- **Beilagen zum Rundschreiben** (z. B. Protokoll der JHV, Jahresplan): im Editor unter „Beilagen“ hochladen (PDF, Word, Excel, Bild; je ≤ 10 MB), gespeichert unter `rundschreiben/<id>/anhang/` und in `newsletters.attachments`. Mitglieder laden sie in der App beim Rundschreiben (Leserecht nur bei veröffentlichten Rundschreiben). Im Mail gehen sie bis zusammen 2,5 MB als Anhang mit, darüber als Download-Link (60 Tage gültig). Brief und PDF nennen sie unter „Beilagen“.

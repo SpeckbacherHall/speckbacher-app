@@ -57,6 +57,7 @@ function letterHtml(nl, m, withAddress = true, forPrint = false) {
       ${items.map(e => letterItem(e, m)).join("")}
       ${preview.length ? `<h2 class="l-sub">VORSCHAU ${esc(nlMonthName(firstOfMonth(nl.month, 1)).toUpperCase())}</h2>${preview.map(e => letterItem(e, m)).join("")}` : ""}
       ${nl.free_text ? `<div class="l-free">${paras(nl.free_text)}</div>` : ""}
+      ${(nl.attachments || []).length ? `<p class="l-free">Beilagen: ${nl.attachments.map(a => esc(a.name)).join(", ")}</p>` : ""}
       <p class="l-greet">Schützen Heil</p>
       <p class="l-sign">${esc(nl.signature).replace(/\n/g, "<br>")}</p>
     </div>`;
@@ -121,6 +122,7 @@ function nlPdfDoc(nl, logo) {
       ...items.map(item),
       ...(preview.length ? [{ text: `VORSCHAU ${nlMonthName(firstOfMonth(nl.month, 1)).toUpperCase()}`, fontSize: 13, margin: [0, 8, 0, 8] }, ...preview.map(item)] : []),
       ...(nl.free_text ? [{ stack: paras(nl.free_text), margin: [0, 8, 0, 0] }] : []),
+      ...((nl.attachments || []).length ? [{ text: `Beilagen: ${nl.attachments.map(a => a.name).join(", ")}`, margin: [0, 8, 0, 0] }] : []),
       { text: "Schützen Heil", margin: [0, 12, 0, 22] },
       { text: nl.signature }
     ]
@@ -202,10 +204,69 @@ function downloadBlob(blob, name) {
 async function deleteNewsletter(nl) {
   const { error } = await db.from("newsletters").delete().eq("id", nl.id);
   if (error) return fail(error, "Das Rundschreiben konnte nicht gelöscht werden.");
-  if (nl.pdf_path) await db.storage.from("rundschreiben").remove([nl.pdf_path]);
+  const files = [nl.pdf_path, ...(nl.attachments || []).map(a => a.path)].filter(Boolean);
+  if (files.length) await db.storage.from("rundschreiben").remove(files);
   state.newsletters = state.newsletters.filter(n => n.id !== nl.id);
   state.nlEdit = false; state.nlDeleteConfirm = false; state.nlDraft = null;
   render(); toast("Rundschreiben gelöscht.");
+}
+
+/* ---------- Beilagen ---------- */
+const ATT_TYPES = /\.(pdf|docx?|xlsx?|pptx|jpe?g|png)$/i;
+const fmtSize = b => b >= 1048576 ? `${(b / 1048576).toLocaleString("de-AT", { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+function attachmentRows(nl, admin) {
+  return (nl.attachments || []).map((a, i) => `<div class="att-row">
+    <button class="att-name" type="button" data-nl-att-open="${i}" data-nl-id="${nl.id}">${ico("description")}<span>${esc(a.name)}<span class="fn"> · ${fmtSize(a.size)}</span></span></button>
+    ${admin ? iconBtn("delete", `Beilage ${esc(a.name)} entfernen`, `data-nl-att-del="${i}"`, "danger") : iconBtn("download", `${esc(a.name)} laden`, `data-nl-att-open="${i}" data-nl-id="${nl.id}"`)}</div>`).join("");
+}
+function attachmentsBox(d) {
+  const saved = d.id ? state.newsletters.find(n => n.id === d.id) : null;
+  const list = saved?.attachments || [];
+  const total = list.reduce((s, a) => s + a.size, 0);
+  return `<div class="sec"><h4>Beilagen <span>${list.length}</span></h4>
+    <p class="rule">Zusätzliche Dokumente, z. B. Protokoll der Jahreshauptversammlung, Jahresplan oder Sonderinformationen (PDF, Word, Excel oder Bild, je höchstens 10 MB). Bis zusammen 2,5 MB gehen sie im Mail als Anhang mit, größere als Download-Link. Mitglieder finden sie auch in der App beim Rundschreiben.</p>
+    ${attachmentRows(saved || d, true)}
+    ${list.length ? `<p class="rule">Zusammen ${fmtSize(total)}${total > 2.5 * 1048576 ? " – im Mail als Download-Links" : ""}</p>` : ""}
+    ${saved ? `<div class="row-actions"><label class="btn" for="nl-att-file">${ico("upload")}Dokument hinzufügen</label><input type="file" id="nl-att-file" accept=".pdf,.doc,.docx,.xls,.xlsx,.pptx,.jpg,.jpeg,.png" multiple hidden></div>`
+      : `<p class="fn">Erst speichern, dann lassen sich Dokumente anhängen.</p>`}
+  </div>`;
+}
+async function addAttachments(files) {
+  readNewsletterForm();
+  const nl = state.newsletters.find(n => n.id === state.nlDraft.id);
+  const list = [...(nl.attachments || [])];
+  for (const f of files) {
+    if (!ATT_TYPES.test(f.name)) { toast(`${f.name}: Dateiart wird nicht unterstützt.`); continue; }
+    if (f.size > 10 * 1048576) { toast(`${f.name} ist größer als 10 MB.`); continue; }
+    const safe = f.name.normalize("NFKD").replace(/[^\w.-]+/g, "_").slice(-80);
+    const path = `${nl.id}/anhang/${Date.now()}-${safe}`;
+    toast(`${f.name} wird hochgeladen …`);
+    const { error } = await db.storage.from("rundschreiben").upload(path, f, { contentType: f.type || "application/octet-stream" });
+    if (error) { console.error(error); toast(`${f.name} konnte nicht hochgeladen werden.`); continue; }
+    list.push({ path, name: f.name, size: f.size, type: f.type || "" });
+  }
+  await saveAttachments(nl, list);
+}
+async function saveAttachments(nl, list) {
+  const { error } = await db.from("newsletters").update({ attachments: list }).eq("id", nl.id);
+  if (error) return fail(error, "Die Beilagen konnten nicht gespeichert werden.");
+  nl.attachments = list; state.nlDraft.attachments = list;
+  render(); toast("Beilagen gespeichert.");
+}
+async function removeAttachment(i) {
+  readNewsletterForm();
+  const nl = state.newsletters.find(n => n.id === state.nlDraft.id);
+  const a = nl.attachments[i];
+  await db.storage.from("rundschreiben").remove([a.path]);
+  await saveAttachments(nl, nl.attachments.filter((_, j) => j !== i));
+}
+async function openAttachment(nlId, i) {
+  const nl = state.newsletters.find(n => n.id === nlId);
+  const a = nl?.attachments?.[i];
+  if (!a) return;
+  const { data, error } = await db.storage.from("rundschreiben").createSignedUrl(a.path, 600, { download: a.name });
+  if (error) return toast("Die Datei konnte nicht geladen werden.");
+  location.href = data.signedUrl;
 }
 
 /* ---------- Mitglieder ---------- */
@@ -225,6 +286,7 @@ function renderLetterView() {
   if (!nl) { state.letterId = null; return renderMember(); }
   return `<button class="back" id="letter-close">${ico("arrow_back")}Zurück</button>
     <div class="letter-screen">${letterHtml(nl, state.me, false)}</div>
+    ${(nl.attachments || []).length ? `<div class="panel" style="margin-top:12px"><h2>Beilagen</h2>${attachmentRows(nl, false)}</div>` : ""}
     <div class="row-actions" style="margin-top:12px"><button class="btn" id="letter-print">Drucken / als PDF</button></div>`;
 }
 
@@ -286,6 +348,7 @@ function renderNewsletterEditor() {
       <p class="rule">Optional: Termine des Folgemonats, die schon angekündigt werden sollen.</p>${eventChecks(nextMonth, d.preview_ids, "nl-pv")}</div>
     ${roundBirthdayHelper(d.month)}
     <label for="nl-free">Freier Text unter den Terminen<textarea id="nl-free" rows="5" placeholder="z. B. Danke für die zahlreiche Teilnahme beim … / Hinweis zur Uniform / Glückwünsche …">${esc(d.free_text || "")}</textarea></label>
+    ${attachmentsBox(d)}
     <label for="nl-sign">Unterschrift<textarea id="nl-sign" rows="3">${esc(d.signature)}</textarea></label>
     <div class="row-actions">
       <button class="btn yes" type="submit" id="nl-save">Speichern</button>
@@ -419,6 +482,8 @@ document.addEventListener("click", async ev => {
     return toast(sent === null ? "Die Push-Nachricht konnte nicht verschickt werden." : `Erneut an ${sent} Mitglieder mit Erinnerungen geschickt.`);
   }
   const saved = () => state.newsletters.find(n => n.id === state.nlDraft?.id);
+  if (d.nlAttOpen !== undefined) { t.disabled = true; await openAttachment(+(d.nlId || state.nlDraft?.id), +d.nlAttOpen); t.disabled = false; return; }
+  if (d.nlAttDel !== undefined) { t.disabled = true; return removeAttachment(+d.nlAttDel); }
   if (t.id === "nl-delete") { state.nlDeleteConfirm = true; render(); scrollTo(0, 0); return; }
   if (t.id === "nl-delete-no") { state.nlDeleteConfirm = false; render(); return; }
   if (t.id === "nl-delete-yes") { t.disabled = true; return deleteNewsletter(saved()); }
@@ -433,6 +498,7 @@ document.addEventListener("click", async ev => {
 });
 document.addEventListener("change", ev => {
   if (ev.target.id === "nl-month" && state.nlDraft) { readNewsletterForm(); render(); }
+  if (ev.target.id === "nl-att-file" && ev.target.files.length) addAttachments([...ev.target.files]);
 });
 document.addEventListener("submit", ev => {
   if (ev.target.id !== "nl-form") return;

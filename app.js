@@ -58,7 +58,7 @@ function download(name, content, type) {
 
 /* ---------- Anmeldung ---------- */
 function renderLogin(message) {
-  $("#roles").hidden = true; $("#logout").hidden = true;
+  $("#roles").hidden = true; $("#logout").hidden = true; $("#servus").hidden = true;
   $("#view").innerHTML = `<form class="panel login" id="login-form">
     <h2>Anmelden</h2>
     <p class="fn">Deine E-Mail-Adresse und deinen persönlichen Zugangscode bekommst du von der Kompanieführung.</p>
@@ -150,7 +150,7 @@ function renderMember() {
   if (state.showMyData) return renderMyData();
   let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
-  <p class="hello">Angemeldet als <b>${esc(fullName(state.me))}</b> · ${open ? `${open} ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Alles beantwortet"}</p>
+  <p class="hello">${open ? `<b>${open}</b> ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Du hast alle Termine beantwortet."}</p>
   <div class="filters" role="group" aria-label="Filter">
     ${[["alle", "Alle"], ["offen", "Offen"], ["zu", "Zugesagt"]].map(([k, l]) => `<button class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
   </div>`;
@@ -682,6 +682,7 @@ function render() {
   $("#role-admin").hidden = !admin;
   $("#role-board").hidden = !board;
   $("#logout").hidden = false;
+  $("#servus").textContent = `Servus ${state.me.first_name}`; $("#servus").hidden = false;
   if ((state.role === "admin" && !admin) || (state.role === "board" && !board)) state.role = "member";
   for (const r of ["member", "board", "admin"]) $(`#role-${r}`).setAttribute("aria-pressed", state.role === r);
   $("#view").innerHTML = state.role === "admin" ? renderAdmin() : state.role === "board" ? renderBoard() : renderMember();

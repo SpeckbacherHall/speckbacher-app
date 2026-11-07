@@ -63,7 +63,7 @@ function itemHtml(e: any, mk: boolean) {
   return `<div style="margin:0 0 14px"><div style="font-weight:700;letter-spacing:.02em">${esc(e.title.toUpperCase())}</div>${lines.map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
 }
 // deno-lint-ignore no-explicit-any
-function mailHtml(nl: any, m: any, items: any[], preview: any[]) {
+function mailHtml(nl: any, m: any, items: any[], preview: any[], extras: { name: string; url: string | null }[] = []) {
   const mk = isMk(m.role_title);
   const hello = `${m.gender === "w" ? "Liebe" : "Lieber"} ${esc(m.first_name)},`;
   const link = `${APP_URL}/#rs-${nl.id}`;
@@ -77,6 +77,7 @@ function mailHtml(nl: any, m: any, items: any[], preview: any[]) {
   ${items.map((e) => itemHtml(e, mk)).join("")}
   ${preview.length ? `<h2 style="font-size:18px;font-weight:400;margin:18px 0 10px">VORSCHAU ${esc(monthName(nextMonth(nl.month)).toUpperCase())}</h2>${preview.map((e) => itemHtml(e, mk)).join("")}` : ""}
   ${nl.free_text ? `<div style="margin-top:16px">${paras(nl.free_text)}</div>` : ""}
+  ${extras.length ? `<p style="margin:16px 0 0"><b>Beilagen</b></p><ul style="margin:4px 0 0;padding-left:20px">${extras.map((x) => `<li>${x.url ? `<a href="${esc(x.url)}" style="color:#48672f">${esc(x.name)}</a> (Download-Link, 60 Tage gültig)` : `${esc(x.name)} (im Anhang)`}</li>`).join("")}</ul>` : ""}
   <p style="margin:18px 0 22px">Schützen Heil</p>
   <p style="margin:0 0 22px">${esc(nl.signature).replace(/\n/g, "<br>")}</p>
   <p style="margin:0 0 22px"><a href="${esc(link)}" style="display:inline-block;background:#48672f;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:20px;font-weight:600">Rückmeldung in der App geben</a></p>
@@ -98,6 +99,13 @@ async function graphToken() {
   if (!r.ok) throw new Error(`Anmeldung bei Microsoft 365 fehlgeschlagen: ${b.error_description?.split("\r\n")[0] ?? r.status}`);
   token = { value: b.access_token, until: Date.now() + (b.expires_in ?? 3600) * 1000 };
   return token.value;
+}
+// Für die Fehlersuche: welche Anwendungsberechtigungen enthält das Token (z. B. ["Mail.Send"])?
+async function tokenRoles() {
+  try {
+    const part = (await graphToken()).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part + "=".repeat((4 - part.length % 4) % 4))).roles ?? [];
+  } catch { return []; }
 }
 // deno-lint-ignore no-explicit-any
 async function sendMail(to: string, subject: string, html: string, attachments: any[]) {
@@ -126,17 +134,36 @@ async function prepare(id: number, needPdf = true) {
   const { data: pdf, error } = nl.pdf_path ? await db.storage.from("rundschreiben").download(nl.pdf_path) : { data: null, error: null };
   if (nl.pdf_path && (error || !pdf)) throw new Error("Das PDF konnte nicht geladen werden.");
   const logo = await fetch(`${APP_URL}/logo-brief.jpg`).then((r) => r.ok ? r.arrayBuffer() : null).catch(() => null);
+  // Beilagen: bis zusammen 2,5 MB als Anhang (Grenze von Microsoft Graph für sendMail ca. 3 MB), sonst als Download-Link
+  // deno-lint-ignore no-explicit-any
+  const att = (nl.attachments ?? []) as any[];
+  const fits = att.reduce((s, a) => s + (a.size ?? 0), 0) <= 2.5 * 1048576;
+  // deno-lint-ignore no-explicit-any
+  const extraFiles: any[] = [];
+  const extras: { name: string; url: string | null }[] = [];
+  for (const a of att) {
+    if (fits) {
+      const { data: f } = await db.storage.from("rundschreiben").download(a.path);
+      if (!f) throw new Error(`Beilage „${a.name}“ konnte nicht geladen werden.`);
+      extraFiles.push({ "@odata.type": "#microsoft.graph.fileAttachment", name: a.name, contentType: a.type || "application/octet-stream", contentBytes: encodeBase64(new Uint8Array(await f.arrayBuffer())) });
+      extras.push({ name: a.name, url: null });
+    } else {
+      const { data: u } = await db.storage.from("rundschreiben").createSignedUrl(a.path, 60 * 24 * 3600, { download: a.name });
+      extras.push({ name: a.name, url: u?.signedUrl ?? null });
+    }
+  }
   const attachments = [
     ...(pdf ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `Rundschreiben_${monthTitle(nl.month).replace(/\s+/g, "_")}.pdf`, contentType: "application/pdf", contentBytes: encodeBase64(new Uint8Array(await pdf.arrayBuffer())) }] : []),
+    ...extraFiles,
     ...(logo ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: "logo.jpg", contentType: "image/jpeg", contentBytes: encodeBase64(new Uint8Array(logo)), isInline: true, contentId: "logo" }] : []),
   ];
-  const ctx = { nl, items: pick(nl.event_ids), preview: pick(nl.preview_ids), attachments, subject: `Rundschreiben ${monthTitle(nl.month)} – Speckbacher Schützenkompanie Hall in Tirol` };
+  const ctx = { nl, items: pick(nl.event_ids), preview: pick(nl.preview_ids), attachments, extras, subject: `Rundschreiben ${monthTitle(nl.month)} – Speckbacher Schützenkompanie Hall in Tirol` };
   cache.set(id, ctx);
   return ctx;
 }
 // deno-lint-ignore no-explicit-any
 async function mailTo(ctx: any, m: any, to: string) {
-  await sendMail(to, ctx.subject, mailHtml(ctx.nl, m, ctx.items, ctx.preview), ctx.attachments);
+  await sendMail(to, ctx.subject, mailHtml(ctx.nl, m, ctx.items, ctx.preview, ctx.extras), ctx.attachments);
 }
 
 async function poll() {
@@ -183,13 +210,13 @@ Deno.serve(async (req) => {
     catch (e) { return json({ error: (e as Error).message }, 502); }
   }
   if (body.mode === "check" && viaCron) {
-    try { await graphToken(); return json({ mail: `ok (Absender ${FROM})` }); } catch (e) { return json({ mail: (e as Error).message }); }
+    try { await graphToken(); return json({ mail: `ok (Absender ${FROM})`, rollen: await tokenRoles() }); } catch (e) { return json({ mail: (e as Error).message }); }
   }
   const me = await requireAdmin(req);
   if (!me) return json({ error: "Nur Admins." }, 403);
 
   if (body.mode === "check") {
-    try { await graphToken(); return json({ mail: `ok (Absender ${FROM})` }); } catch (e) { return json({ mail: (e as Error).message }); }
+    try { await graphToken(); return json({ mail: `ok (Absender ${FROM})`, rollen: await tokenRoles() }); } catch (e) { return json({ mail: (e as Error).message }); }
   }
   if (!body.id) return json({ error: "Rundschreiben fehlt." }, 400);
 
