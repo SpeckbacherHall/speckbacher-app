@@ -113,3 +113,7 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 - Oben rechts steht „Servus <Vorname>“.
 - **Beilagen zum Rundschreiben** (z. B. Protokoll der JHV, Jahresplan): im Editor unter „Beilagen“ hochladen (PDF, Word, Excel, Bild; je ≤ 10 MB), gespeichert unter `rundschreiben/<id>/anhang/` und in `newsletters.attachments`. Mitglieder laden sie in der App beim Rundschreiben (Leserecht nur bei veröffentlichten Rundschreiben). Im Mail gehen sie bis zusammen 2,5 MB als Anhang mit, darüber als Download-Link (60 Tage gültig). Brief und PDF nennen sie unter „Beilagen“.
+
+## Neues von der Homepage
+
+- Die Startseite der Mitglieder zeigt die letzten 6 Berichte von speckbacher-schuetzen.at als wischbare Karten (`berichte.js`). Die Edge Function `berichte` liest den RSS-Feed (`/feed/`, die WordPress-REST-API ist gesperrt) und das Vorschaubild (og:image, ca. 768 px aus dem srcset), 30 Minuten zwischengespeichert. CSP: `img-src` erlaubt `https://speckbacher-schuetzen.at`.

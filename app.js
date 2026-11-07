@@ -150,6 +150,7 @@ function renderMember() {
   if (state.showMyData) return renderMyData();
   let html = `<div class="settings-link"><button class="btn" id="open-fibel">Fibel</button><button class="btn" id="open-birthdays">Geburtstage</button><button class="btn" id="open-mydata">Meine Daten</button><button class="btn" id="open-history">Meine Laufbahn</button><button class="btn" id="open-settings">Erinnerungen &amp; Kalender</button></div>
   ${newsletterCard()}
+  ${newsBlock()}
   <p class="hello">${open ? `<b>${open}</b> ${open === 1 ? "Termin wartet" : "Termine warten"} auf deine Rückmeldung` : "Du hast alle Termine beantwortet."}</p>
   <div class="filters" role="group" aria-label="Filter">
     ${[["alle", "Alle"], ["offen", "Offen"], ["zu", "Zugesagt"]].map(([k, l]) => `<button class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
