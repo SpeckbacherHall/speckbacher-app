@@ -344,7 +344,9 @@ function attendanceSummary(e) {
   const t = tally(e), c = attendanceCounts(e);
   const noShows = t.yes.filter(m => presentOf(e, m.id) === false).length;
   const unannounced = relevantMembers(e).filter(m => presentOf(e, m.id) === true && !t.yes.includes(m)).length;
+  const here = relevantMembers(e).filter(m => presentOf(e, m.id) === true), mk = here.filter(isMk).length;
   return `<div class="counts"><span><i class="dot" style="background:var(--good)"></i><b>${c.present}</b> anwesend</span><span><i class="dot" style="background:var(--red)"></i><b>${c.absent}</b> nicht da</span><span><b>${relevantMembers(e).length - c.present - c.absent}</b> nicht erfasst</span></div>
+  ${c.present ? `<p class="rule">Davon <b>${here.length - mk}</b> Schützen und <b>${mk}</b> Marketenderinnen${e.shots != null ? ` · <b>${e.shots}</b> Schuss abgegeben` : ""}</p>` : ""}
   ${c.present + c.absent ? `<p class="rule">${noShows} zugesagt, aber nicht da · ${unannounced} da ohne Zusage</p>` : ""}`;
 }
 function attendanceList(e, t) {
@@ -356,7 +358,10 @@ function attendanceList(e, t) {
     return `<tr class="${p === true ? "is-present" : p === false ? "is-absent" : ""}"><td>${esc(fullName(m))}<br><span class="fn">${label(m)}${priv(m).rifle_number ? " · Nr. " + esc(priv(m).rifle_number) : ""}</span></td>
       <td class="att"><button class="mini yes ${p === true ? "on" : ""}" data-att="${m.id}" data-val="true" aria-pressed="${p === true}">da</button><button class="mini no ${p === false ? "on" : ""}" data-att="${m.id}" data-val="false" aria-pressed="${p === false}">nicht da</button></td></tr>`;
   }).join("");
-  return `<div class="row-actions" style="margin-top:12px">
+  return `<form class="shots-form" id="shots-form">
+      <label for="shots">Abgegebene Schuss<input id="shots" type="number" min="0" step="1" inputmode="numeric" value="${e.shots ?? ""}"></label>
+      <button class="btn" type="submit" id="shots-save">Speichern</button></form>
+    <div class="row-actions" style="margin-top:12px">
       <button class="btn" id="att-all-yes" ${t.yes.length ? "" : "disabled"}>Alle Zugesagten als „da“</button>
       <button class="btn" id="att-rest-no">Übrige als „nicht da“</button>
     </div>
@@ -391,7 +396,7 @@ function renderAdmin() {
       const tab = state.detailTab || (e.event_date <= todayIso() ? "anw" : "rueck");
       return html + `<button class="back" id="back">${ico("arrow_back")}Alle Termine</button>
       <div class="panel">
-        <span class="type t-${e.kind}">${TYPES[e.kind]}</span>
+        <span class="type t-${e.kind}">${TYPES[e.kind]}${e.is_public ? " · öffentlich" : ""}</span>
         <h2>${esc(e.title)}</h2>
         <p class="meta"><span>${longDate(e.event_date)} · ${timesLine(e)}</span><span>${esc(e.place)}${e.dress ? " · " + esc(e.dress) : ""}</span>${e.notes ? `<span>${esc(e.notes)}</span>` : ""}</p>
         ${e.note_marketenderinnen ? mkNote(e) : ""}
@@ -419,7 +424,10 @@ function renderAdmin() {
   }
   html += `<div class="filters" role="group" aria-label="Zeitraum">
     <button class="chip" data-when="kommend" aria-pressed="${state.when === "kommend"}">Kommende</button>
-    <button class="chip" data-when="vergangen" aria-pressed="${state.when === "vergangen"}">Vergangene</button></div>`;
+    <button class="chip" data-when="vergangen" aria-pressed="${state.when === "vergangen"}">Vergangene</button>
+    <button class="chip" data-when="statistik" aria-pressed="${state.when === "statistik"}">Statistik</button></div>`;
+  if (state.when === "statistik") return html + renderStats();
+  if (state.when === "kommend") html += publicCalBox();
   const list = state.when === "kommend" ? upcoming() : state.events.filter(isPast).reverse();
   if (!list.length) return html + `<p class="empty" style="margin-top:12px">${state.when === "kommend" ? "Keine kommenden Termine. Lege einen unter „Neuer Termin“ an." : "Keine vergangenen Termine in den letzten zwölf Monaten."}</p>`;
   html += `<div class="list">`;
@@ -593,6 +601,12 @@ function localDateTime(iso) {
 }
 const dtLabel = iso => new Date(iso).toLocaleString("de-AT", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 const isMk = m => /marketenderin/i.test(m?.role_title || "");
+const PUBLIC_ICS = `${cfg.supabaseUrl}/functions/v1/kalender?oeffentlich=1`;
+function publicCalBox() {
+  const n = upcoming().filter(e => e.is_public).length;
+  return `<div class="cal-box"><div><b>Kalender für die Homepage</b><span class="fn">${n} kommende${n === 1 ? "r" : ""} öffentliche${n === 1 ? "r" : ""} Termin${n === 1 ? "" : "e"} · Häkchen „Öffentlich“ beim Termin</span></div>
+    ${iconBtn("content_copy", "Kalender-Link für die Homepage kopieren", 'id="copy-public-ics"', "tonal")}</div>`;
+}
 const mkNote = e => `<div class="note-box mk-note"><b>Für Marketenderinnen</b><span>${esc(e.note_marketenderinnen).replace(/\n/g, "<br>")}</span></div>`;
 function renderNew(e = null) {
   const v = k => esc(e?.[k] ?? "");
@@ -615,6 +629,7 @@ function renderNew(e = null) {
     <label for="f-notes">Hinweis (optional)<input id="f-notes" value="${v("notes")}"></label>
     <label for="f-mk">Hinweis für Marketenderinnen (optional)<textarea id="f-mk" rows="2">${v("note_marketenderinnen")}</textarea></label>
     <p class="rule">Sehen nur Mitglieder mit der Funktion „Marketenderin“ (und Admins), z. B. Tracht, Treffpunkt oder was mitzubringen ist.</p>
+    <label class="check" for="f-public"><input type="checkbox" id="f-public" ${e?.is_public ? "checked" : ""}><span>Öffentlich – im Kalender auf der Homepage anzeigen<br><span class="fn">Nur Bezeichnung, Datum, Uhrzeit, Ort und Adjustierung; Hinweise bleiben intern. Nicht für Vorstandstermine.</span></span></label>
     <label for="f-ask">Anmelde-Erinnerung an alle ohne Rückmeldung (optional)<input id="f-ask" type="datetime-local" value="${e?.ask_at ? localDateTime(e.ask_at) : ""}"></label>
     <div class="filters" role="group" aria-label="Erinnerung schnell setzen">
       ${[[7, "1 Woche vorher"], [3, "3 Tage vorher"], [2, "2 Tage vorher"]].map(([n, l]) => `<button class="chip" type="button" data-askdays="${n}">${l}</button>`).join("")}
@@ -756,6 +771,11 @@ document.addEventListener("click", async ev => {
     return;
   }
   if (t.id === "export") { exportCsv(state.events.find(x => x.id === state.openEvent)); return; }
+  if (t.id === "copy-public-ics") {
+    try { await navigator.clipboard.writeText(PUBLIC_ICS); toast("Kalender-Link kopiert. In das ICS-Plugin der Homepage einfügen."); }
+    catch (e) { prompt("Kalender-Link für die Homepage:", PUBLIC_ICS); }
+    return;
+  }
   if (t.id === "delete") { state.confirmDelete = true; render(); return; }
   if (t.id === "delete-no") { state.confirmDelete = false; render(); return; }
   if (t.id === "delete-yes") {
@@ -778,6 +798,15 @@ document.addEventListener("submit", async ev => {
     return login($("#login-email").value, $("#login-code").value);
   }
   if (ev.target.id === "edit-form") { $("#e-submit").disabled = true; return saveMember(); }
+  if (ev.target.id === "shots-form") {
+    const e = state.events.find(x => x.id === state.openEvent), v = $("#shots").value.trim();
+    const shots = v === "" ? null : Math.max(0, Math.round(Number(v)));
+    if (Number.isNaN(shots)) return toast("Bitte eine Zahl eintragen.");
+    $("#shots-save").disabled = true;
+    const { error } = await db.from("events").update({ shots }).eq("id", e.id);
+    if (error) { $("#shots-save").disabled = false; return fail(error, "Konnte nicht gespeichert werden."); }
+    e.shots = shots; render(); return toast(shots === null ? "Schusszahl entfernt." : `${shots} Schuss gespeichert.`);
+  }
   if (ev.target.id === "new-form") {
     $("#f-submit").disabled = true;
     const editing = state.editEvent ? state.openEvent : null;
@@ -786,6 +815,7 @@ document.addEventListener("submit", async ev => {
       start_time: $("#f-time").value || null, muster_time: $("#f-muster").value || null, place: $("#f-place").value.trim(),
       dress: $("#f-dress").value.trim() || null, notes: $("#f-notes").value.trim() || null,
       note_marketenderinnen: $("#f-mk").value.trim() || null,
+      is_public: $("#f-public").checked && $("#f-kind").value !== "vorstand",
       ask_at: $("#f-ask").value ? new Date($("#f-ask").value).toISOString() : null
     };
     if (!editing) row.created_by = state.me.id;

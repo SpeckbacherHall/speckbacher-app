@@ -102,3 +102,9 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 - **Löschen:** Rundschreiben lassen sich im Editor über das Papierkorb-Symbol löschen (samt PDF).
 - **Marketenderinnen:** Je Termin ein eigener Hinweis; sichtbar für Mitglieder mit der Funktion „Marketenderin“, in ihren Briefen/Mails und im allgemeinen PDF.
 - **Oberfläche:** Textfelder mit schwebender Beschriftung (`felder.js`, nach material-web „Outlined text field“), Symbolschaltflächen mit Material Symbols (`icons.js`).
+
+## Statistik, Schusszahl, öffentlicher Kalender
+
+- **Statistik:** Admin → Termine → „Statistik“: je Jahr Termine mit Anwesenheit, Schützen und Marketenderinnen (gesamt und Ø je Termin) und abgegebene Schuss; Liste je Termin, als CSV exportierbar (`statistik.js`). Marketenderinnen = Funktion „Marketenderin“ laut heutigem Mitgliederstand.
+- **Schusszahl:** beim Termin unter „Anwesenheit“ (`events.shots`).
+- **Öffentlicher Kalender:** Häkchen „Öffentlich“ beim Termin (`events.is_public`, nicht für Vorstandstermine). Abo-Adresse für das ICS-Plugin der Homepage: `https://eaqxzkjffnxdtpxrfwtu.supabase.co/functions/v1/kalender?oeffentlich=1` (nur Bezeichnung, Zeit, Ort, Adjustierung; Termine ab 90 Tagen zurück). Der Link lässt sich unter Admin → Termine kopieren.

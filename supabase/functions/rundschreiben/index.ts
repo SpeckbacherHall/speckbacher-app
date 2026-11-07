@@ -2,7 +2,7 @@
 // Jede Mail hat eine persönliche Anrede, den Brief als Mailtext und das PDF (in der App erzeugt, Speicher
 // "rundschreiben") im Anhang. Versand über eine Warteschlange (newsletter_mails), höchstens 25 Mails je Minute.
 // - POST {mode:"mail", id}  (Admin): alle Mitglieder mit „Rundschreiben per E-Mail“ in die Warteschlange
-// - POST {mode:"test", id}  (Admin): sofort eine Test-Mail an die eigene Adresse
+// - POST {mode:"test", id, to?} (Admin): sofort eine Test-Mail (an die eigene oder die angegebene Adresse)
 // - POST {mode:"check"}     (Admin): prüft die Microsoft-365-Anmeldung
 // - POST {mode:"poll"}      (Zeitplan, x-cron-secret): arbeitet die Warteschlange ab
 // Geheimnisse: MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET (App-Registrierung mit Mail.Send),
@@ -114,20 +114,20 @@ async function sendMail(to: string, subject: string, html: string, attachments: 
 // Alles, was für die Mails eines Rundschreibens gebraucht wird (einmal je Lauf geladen)
 // deno-lint-ignore no-explicit-any
 const cache = new Map<number, any>();
-async function prepare(id: number) {
+async function prepare(id: number, needPdf = true) {
   if (cache.has(id)) return cache.get(id);
   const { data: nl } = await db.from("newsletters").select("*").eq("id", id).maybeSingle();
   if (!nl) throw new Error("Rundschreiben nicht gefunden.");
-  if (!nl.pdf_path) throw new Error("Zum Rundschreiben gibt es noch kein PDF.");
+  if (!nl.pdf_path && needPdf) throw new Error("Zum Rundschreiben gibt es noch kein PDF.");
   const ids = [...nl.event_ids, ...nl.preview_ids];
   const { data: evs } = ids.length ? await db.from("events").select("*").in("id", ids) : { data: [] };
   // deno-lint-ignore no-explicit-any
   const pick = (l: number[]) => l.map((x) => (evs ?? []).find((e: any) => e.id === x)).filter(Boolean).sort((a: any, b: any) => a.event_date.localeCompare(b.event_date));
-  const { data: pdf, error } = await db.storage.from("rundschreiben").download(nl.pdf_path);
-  if (error || !pdf) throw new Error("Das PDF konnte nicht geladen werden.");
+  const { data: pdf, error } = nl.pdf_path ? await db.storage.from("rundschreiben").download(nl.pdf_path) : { data: null, error: null };
+  if (nl.pdf_path && (error || !pdf)) throw new Error("Das PDF konnte nicht geladen werden.");
   const logo = await fetch(`${APP_URL}/logo-brief.jpg`).then((r) => r.ok ? r.arrayBuffer() : null).catch(() => null);
   const attachments = [
-    { "@odata.type": "#microsoft.graph.fileAttachment", name: `Rundschreiben_${monthTitle(nl.month).replace(/\s+/g, "_")}.pdf`, contentType: "application/pdf", contentBytes: encodeBase64(new Uint8Array(await pdf.arrayBuffer())) },
+    ...(pdf ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `Rundschreiben_${monthTitle(nl.month).replace(/\s+/g, "_")}.pdf`, contentType: "application/pdf", contentBytes: encodeBase64(new Uint8Array(await pdf.arrayBuffer())) }] : []),
     ...(logo ? [{ "@odata.type": "#microsoft.graph.fileAttachment", name: "logo.jpg", contentType: "image/jpeg", contentBytes: encodeBase64(new Uint8Array(logo)), isInline: true, contentId: "logo" }] : []),
   ];
   const ctx = { nl, items: pick(nl.event_ids), preview: pick(nl.preview_ids), attachments, subject: `Rundschreiben ${monthTitle(nl.month)} – Speckbacher Schützenkompanie Hall in Tirol` };
@@ -167,14 +167,22 @@ async function requireAdmin(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Nur POST erlaubt." }, 405);
-  let body: { mode?: string; id?: number } = {};
+  cache.clear();   // je Aufruf frisch laden (Rundschreiben oder PDF können sich geändert haben)
+  let body: { mode?: string; id?: number; to?: string } = {};
   try { body = await req.json(); } catch { /* leer */ }
 
   if (body.mode === "poll") {
     if (req.headers.get("x-cron-secret") !== await secret("cron_secret")) return json({ error: "Nicht erlaubt." }, 401);
     return json({ sent: await poll() });
   }
-  if (body.mode === "check" && req.headers.get("x-cron-secret") === await secret("cron_secret")) {
+  const viaCron = req.headers.get("x-cron-secret") === await secret("cron_secret");
+  const validTo = (t?: string) => !!t && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+  // Wartungszugang (Zeitplan-Geheimnis): Test-Mail an eine angegebene Adresse, auch ohne PDF
+  if (body.mode === "test" && viaCron && body.id && validTo(body.to)) {
+    try { await mailTo(await prepare(body.id, false), { first_name: "Test", gender: "m", role_title: null }, body.to!); return json({ to: body.to }); }
+    catch (e) { return json({ error: (e as Error).message }, 502); }
+  }
+  if (body.mode === "check" && viaCron) {
     try { await graphToken(); return json({ mail: `ok (Absender ${FROM})` }); } catch (e) { return json({ mail: (e as Error).message }); }
   }
   const me = await requireAdmin(req);
@@ -187,7 +195,9 @@ Deno.serve(async (req) => {
 
   if (body.mode === "test") {
     // deno-lint-ignore no-explicit-any
-    const to = ((me as any).member_private?.email ?? (me as any).member_private?.[0]?.email) as string | undefined;
+    const own = ((me as any).member_private?.email ?? (me as any).member_private?.[0]?.email) as string | undefined;
+    if (body.to && !validTo(body.to)) return json({ error: "Die Test-Adresse ist ungültig." }, 400);
+    const to = body.to || own;
     if (!to) return json({ error: "Für dich ist keine E-Mail-Adresse hinterlegt." }, 400);
     try { await mailTo(await prepare(body.id), me, to); return json({ to }); }
     catch (e) { return json({ error: (e as Error).message }, 502); }

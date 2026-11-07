@@ -165,7 +165,9 @@ function mailStatusLine(nl) {
 async function sendNewsletterMail(nl, test) {
   try { await storeNewsletterPdf(nl); }
   catch (e) { console.error(e); return toast("Das PDF konnte nicht erstellt werden."); }
-  const { data, error } = await db.functions.invoke("rundschreiben", { body: { mode: test ? "test" : "mail", id: nl.id } });
+  const to = test ? ($("#nl-test-to")?.value || "").trim() : undefined;
+  if (test) state.nlTestTo = to;
+  const { data, error } = await db.functions.invoke("rundschreiben", { body: { mode: test ? "test" : "mail", id: nl.id, ...(to ? { to } : {}) } });
   state.nlMailConfirm = false;
   if (error) {
     let msg = "Der E-Mail-Versand konnte nicht gestartet werden.";
@@ -306,7 +308,8 @@ function renderNewsletterEditor() {
       ${mailStatusLine(saved)}
       ${state.nlMailConfirm
         ? `<p><b>Jetzt an ${mailRecipients().length} Mitglieder per E-Mail schicken?</b></p><div class="row-actions"><button class="btn yes" id="nl-mail-yes">Ja, verschicken</button><button class="btn ghost" id="nl-mail-no">Abbrechen</button></div>`
-        : `<div class="row-actions"><button class="btn yes" id="nl-mail" ${mailRecipients().length ? "" : "disabled"}>${ico("send")}Per E-Mail senden</button><button class="btn" id="nl-mail-test">Test an mich</button></div>`}
+        : `<div class="row-actions"><button class="btn yes" id="nl-mail" ${mailRecipients().length ? "" : "disabled"}>${ico("send")}Per E-Mail senden</button></div>
+          <div class="shots-form"><label for="nl-test-to">Test-Mail an<input id="nl-test-to" type="email" value="${esc(state.nlTestTo || priv(state.me).email || "")}"></label><button class="btn" id="nl-mail-test">Test senden</button></div>`}
     </div>
     <div class="send-box">
       <h3 class="ico-title">${ico("share")}Teilen, z. B. in WhatsApp</h3>
