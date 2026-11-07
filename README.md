@@ -91,7 +91,8 @@ Alle Regeln prüft die Datenbank selbst (Row-Level-Security). Der Schlüssel in 
 
 - `styles.css` folgt Material 3 (m3.material.io): Farbrollen, Typografie, Formen, Höhen und Zustandsebenen als CSS-Variablen (`--md-sys-…`).
 - Die Farben sind aus der Kompaniefarbe Lodengrün `#4f6c37` mit Googles `@material/material-color-utilities` erzeugt (Schema „Tonal Spot“, wie Material Theme Builder und Flutter `ColorScheme.fromSeed`). Rot (Fahnenabordnung) und Blau (sonstige Aktivität) aus dem Logo sind eigene Farben (`--md-ext-…`). Hell und dunkel folgen der Geräteeinstellung.
-- Schrift Roboto (selbst gehostet in `fonts/`, Lizenz `fonts/Roboto-LICENSE`); Karla bleibt für Rundschreiben-Druck und PDFs.
+- Akzentfarben laut Styleguide: Schützen-Rot `#C8102E` (Pflichtausrückung/Kompanieausrückung, Signal) und Kaiser-Blau `#1D3C59` als Tertiärfarbe (Hinweise, Vorstand); Fahnenabordnung grün, sonstige Aktivität neutral.
+- Schriften: Überschriften Montserrat, Text Roboto (beide selbst gehostet in `fonts/`, Lizenzen dort); Karla bleibt für Rundschreiben-Druck und PDFs.
 - Bewusst ohne `@material/web`: die Bibliothek ist im Wartungsmodus, die App braucht so keinen Build-Schritt und kein zusätzliches JavaScript. Eine spätere Flutter-App bekommt mit derselben Grundfarbe dieselben Farben.
 
 ## Rundschreiben per E-Mail, Teilen, Marketenderinnen
